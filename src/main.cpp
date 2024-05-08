@@ -1,5 +1,6 @@
 #include <gtkmm.h>
 #include <iostream>
+#include <sqlite3.h>
 
 #include "Window.hpp"
 

@@ -6,19 +6,85 @@
 VoiceOpsWindow::VoiceOpsWindow() {
     set_title("VoiceOps");
 
-    auto hbox = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 5);
-    auto server_list = server_list_panel(nullptr);
-    auto server_content = server_content_panel(nullptr);
+    int rc;
 
-    hbox->append(*server_list);
-    hbox->append(*server_content);
+    rc = sqlite3_open("./database/voiceops.db", &mDBHandle);
+
+    if (rc) {
+        std::cout << "Can't open database: " << sqlite3_errmsg(mDBHandle);
+    } else {
+        std::cout << "Opened database successfully!\n";
+        setup_database();
+    }
+
+    auto hbox = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 5);
+
+    std::vector<ServerInfo> servers{};
+
+    std::vector<ServerInfo> tempServer{};
+
+    server_list_panel();
+    server_content_panel(false);
+
+    if (mServerListBox) hbox->append(*mServerListBox);
+    else std::cerr << "problem 1\n";
+    if (mServerContentBox) hbox->append(*mServerContentBox);
+    else std::cerr << "problem 2\n";
 
     set_child(*hbox);
     set_default_size(500, 500);
+
+    auto children = hbox->get_last_child();
+    mServerContentBox = dynamic_cast<Gtk::Box*>(children);
 }
 
-Gtk::Box* VoiceOpsWindow::server_list_panel(void* pServerList) {
-    auto mainVBox = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 5);
+void VoiceOpsWindow::setup_database() {
+    char *zErrMsg = 0;
+    int rc;
+
+    const char* sql = "CREATE TABLE IF NOT EXISTS SERVER_LIST(" \
+        "SERVER_NAME    TEXT," \
+        "SERVER_URL     TEXT    NOT NULL," \
+        "SERVER_PORT    TEXT    NOT NULL);";
+    
+    rc = sqlite3_exec(mDBHandle, sql, nullptr, nullptr, &zErrMsg);
+
+    if (rc != SQLITE_OK) {
+        std::cout << "Sqlite error: " << zErrMsg;
+        sqlite3_free(zErrMsg);
+    } else {
+        std::cout << "Table created successfully!\n";
+    }
+}
+
+void VoiceOpsWindow::insert_server_to_database(const std::string& pName, const std::string& pURL, const std::string& pPort) {
+    if (pURL.empty()) {
+        std::cout << "Empty server URL provided. Cannot add to database.\n";
+        return;
+    }
+
+    char* zErrMsg = nullptr;
+    std::string sql = "INSERT INTO SERVER_LIST (SERVER_NAME, SERVER_URL, SERVER_PORT) VALUES ('" + pName + "', '" + pURL + "', '" + pPort + "');";
+    int rc = sqlite3_exec(mDBHandle, sql.c_str(), nullptr, nullptr, &zErrMsg);
+    if (rc != SQLITE_OK) {
+        std::cout << "SQLite error: " << zErrMsg << std::endl;
+        sqlite3_free(zErrMsg);
+    } else {
+        std::cout << "Inserted values successfully\n";
+    }
+}
+
+VoiceOpsWindow::~VoiceOpsWindow() {
+    if (mDBHandle) {
+        sqlite3_close(mDBHandle);
+        std::cout << "Database connection closed\n";
+    }
+}
+
+void VoiceOpsWindow::server_list_panel() {
+    database_functions::retrieve_servers(mDBHandle, mServers);
+
+    mServerListBox = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 5);
     auto topBarVBox = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 5);
     auto serverListVBox = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 5);
     serverListVBox->set_vexpand(true);
@@ -27,41 +93,110 @@ Gtk::Box* VoiceOpsWindow::server_list_panel(void* pServerList) {
 
     auto topBar = top_bar();
     topBarVBox->append(*topBar);
-    mainVBox->append(*topBarVBox);
+    mServerListBox->append(*topBarVBox);
 
-    if (!pServerList) {
+    if (mServers.empty()) {
         label = Gtk::make_managed<Gtk::Label>("You have not joined a server yet.");
         serverListVBox->append(*label);
         serverListVBox->set_valign(Gtk::Align::CENTER);
-        mainVBox->append(*serverListVBox);
+        mServerListBox->append(*serverListVBox);
 
-        mainVBox->set_margin_start(10);
-        return mainVBox;
+        mServerListBox->set_margin_start(10);
+        return;
+    }
+
+    for (ServerInfo& server : mServers) {
+        auto serverButton = Gtk::make_managed<Gtk::Button>(server.name);
+        ServerCard serverCard;
+        serverCard.button = serverButton;
+        serverCard.info = server;
+        mServerCards.push_back(serverCard);
+    }
+
+    for (ServerCard& card : mServerCards) {
+        card.button->signal_clicked().connect(sigc::bind(sigc::mem_fun(*this, &VoiceOpsWindow::on_server_button_clicked),
+        card));
+        serverListVBox->append(*card.button);
     }
     
-    mainVBox->append(*serverListVBox);
+    mServerListBox->append(*serverListVBox);
 
-    mainVBox->set_margin_start(10);    
-    return mainVBox;
+    mServerListBox->set_margin_start(10);
 }
 
-Gtk::Box* VoiceOpsWindow::server_content_panel(void* pSelectedServer) {
-    auto mainHBox = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 5);
-    mainHBox->set_hexpand(true);
+void VoiceOpsWindow::on_server_button_clicked(ServerCard& pServer) {
+    mSelectedServer = &pServer;
+    std::cout << "URL: " << pServer.info.url << '\n';
+    std::cout << "Port: " << pServer.info.port << '\n';
+    server_content_panel(true);
+}
+
+void VoiceOpsWindow::refresh_server_list(const std::string& pServerName, const std::string& pServerURL, const std::string& pServerPort) {
+    bool firstEntry = mServers.empty();
+    ServerInfo newServer = {pServerName, pServerURL, pServerPort};
+    mServers.push_back(newServer);
+
+    auto serverButton = Gtk::make_managed<Gtk::Button>(pServerName);
+    ServerCard newServerCard;
+    newServerCard.button = serverButton;
+    newServerCard.info = newServer;
+    mServerCards.push_back(newServerCard);
+    mServerCards.back().button->signal_clicked().connect(sigc::bind(sigc::mem_fun(*this, &VoiceOpsWindow::on_server_button_clicked),
+        mServerCards.back()));
+
+    if (mServerListBox && mServerListBox->get_last_child()) {
+        auto serverListVBox = dynamic_cast<Gtk::Box*>(mServerListBox->get_last_child());
+        if (serverListVBox) {
+            if (firstEntry) {
+                auto child = serverListVBox->get_first_child();
+                while (child != nullptr) {
+                    serverListVBox->remove(*child);
+                    child = serverListVBox->get_first_child();
+                }
+                serverListVBox->set_valign(Gtk::Align::START);
+            }
+
+            serverListVBox->append(*newServerCard.button);
+        }
+    }
+
+    mSelectedServer = &mServerCards.back();
+    server_content_panel(true);
+}
+
+void VoiceOpsWindow::server_content_panel(bool pSelectedServer) {
+
+    if (mServerContentBox == nullptr) {
+        mServerContentBox = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 5);
+        mServerContentBox->set_hexpand(true);
+    }
     Gtk::Label* emptyLabel = nullptr;
 
     if (!pSelectedServer) {
         emptyLabel = Gtk::make_managed<Gtk::Label>("Select a server from the left to view its contents.");
-        mainHBox->append(*emptyLabel);
-        mainHBox->set_valign(Gtk::Align::CENTER);
-        mainHBox->set_halign(Gtk::Align::CENTER);
-        mainHBox->set_margin_start(10);
+        mServerContentBox->append(*emptyLabel);
+        mServerContentBox->set_valign(Gtk::Align::CENTER);
+        mServerContentBox->set_halign(Gtk::Align::CENTER);
+        mServerContentBox->set_margin_start(10);
 
-        return mainHBox;
+        return;
     }
 
-    mainHBox->set_margin_start(10);
-    return mainHBox;
+    auto child = mServerContentBox->get_first_child();
+    while (child != nullptr) {
+        mServerContentBox->remove(*child);
+        child = mServerContentBox->get_first_child();
+    }
+
+    Gtk::Label* serverName = Gtk::make_managed<Gtk::Label>(mSelectedServer->info.name);
+    Gtk::Label* serverURL = Gtk::make_managed<Gtk::Label>(mSelectedServer->info.url);
+    Gtk::Label* serverPort = Gtk::make_managed<Gtk::Label>(mSelectedServer->info.port);
+
+    mServerContentBox->append(*serverName);
+    mServerContentBox->append(*serverURL);
+    mServerContentBox->append(*serverPort);
+
+    mServerContentBox->set_margin_start(10);
 }
 
 Gtk::Box* VoiceOpsWindow::top_bar() {
@@ -89,6 +224,12 @@ void VoiceOpsWindow::on_add_button_clicked() {
 void VoiceOpsWindow::on_add_server_response(AddServerDialog& pDialog, int pResponseID) {
     switch (pResponseID) {
         case Gtk::ResponseType::OK:
+            std::cout << pDialog.get_server_name() << '\n';
+            std::cout << pDialog.get_server_url() << '\n';
+            std::cout << pDialog.get_server_port() << '\n';
+            std::cout << std::flush;
+            insert_server_to_database(pDialog.get_server_name(), pDialog.get_server_url(), pDialog.get_server_port());
+            refresh_server_list(pDialog.get_server_name(), pDialog.get_server_url(), pDialog.get_server_port());
             pDialog.hide();
             std::cout << "OK was clicked\n";
             break;
