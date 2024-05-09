@@ -1,0 +1,24 @@
+ * {
+    font-family: sans-serif;
+    /* background: #3d3c3a;
+    color: #fff; */
+    font-size: 15px;
+    -gtk-render-emoji: auto;
+}
+
+/* button {
+    border: none;
+}
+
+button:hover {
+    background: white;
+}
+
+button:hover label {
+    background: white;
+    color: black;
+}  */
+
+#content-box {
+    background: red;
+}

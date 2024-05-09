@@ -171,6 +171,7 @@ void VoiceOpsWindow::server_content_panel(bool pSelectedServer) {
         mServerContentBox->set_hexpand(true);
     }
     Gtk::Label* emptyLabel = nullptr;
+    mServerContentBox->set_name("content-box");
 
     if (!pSelectedServer) {
         emptyLabel = Gtk::make_managed<Gtk::Label>("Select a server from the left to view its contents.");
@@ -202,6 +203,7 @@ void VoiceOpsWindow::server_content_panel(bool pSelectedServer) {
 Gtk::Box* VoiceOpsWindow::top_bar() {
     auto hbox = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 5);
     auto add_button = Gtk::make_managed<Gtk::Button>("+");
+    add_button->set_name("addingbutton");
     add_button->signal_clicked().connect(sigc::mem_fun(*this, &VoiceOpsWindow::on_add_button_clicked));
 
     add_button->set_margin(5);
