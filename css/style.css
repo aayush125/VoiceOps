@@ -64,18 +64,14 @@
   }
 
 #add-dialog entry {
-    background: transparent;
+    background: rgba(0, 0, 0, 0.1);
     color: #fff;
     border: 1px solid #444;
     padding: 8px 12px;
     border-radius: 4px;
     font-size: 16px;
     transition: border-color 0.3s ease;
-  }
-  
-  #add-dialog entry:focus {
-    background: #fff;
-    border-color: #666;
+    caret-color: #fff;
   }
   
   #add-dialog entry:placeholder {
