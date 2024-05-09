@@ -64,7 +64,7 @@
   }
 
 #add-dialog entry {
-    background: rgba(0, 0, 0, 0.1);
+    background: transparent;
     color: #fff;
     border: 1px solid #444;
     padding: 8px 12px;
@@ -72,10 +72,6 @@
     font-size: 16px;
     transition: border-color 0.3s ease;
     caret-color: #fff;
-  }
-  
-  #add-dialog entry:placeholder {
-    color: #888;
   }
 
  #server-list-box {
