@@ -5,6 +5,7 @@
 
 VoiceOpsWindow::VoiceOpsWindow() {
     set_title("VoiceOps");
+    set_name("main-window");
 
     int rc;
 
@@ -19,10 +20,6 @@ VoiceOpsWindow::VoiceOpsWindow() {
 
     auto hbox = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 5);
 
-    std::vector<ServerInfo> servers{};
-
-    std::vector<ServerInfo> tempServer{};
-
     server_list_panel();
     server_content_panel(false);
 
@@ -32,10 +29,13 @@ VoiceOpsWindow::VoiceOpsWindow() {
     else std::cerr << "problem 2\n";
 
     set_child(*hbox);
-    set_default_size(500, 500);
+    set_default_size(900, 900);
 
-    auto children = hbox->get_last_child();
-    mServerContentBox = dynamic_cast<Gtk::Box*>(children);
+    // auto children = hbox->get_last_child();
+    // mServerContentBox = dynamic_cast<Gtk::Box*>(children);
+
+    mServerContentBox->set_name("content-box");
+    mServerListBox->set_name("list-box");
 }
 
 void VoiceOpsWindow::setup_database() {
@@ -85,9 +85,11 @@ void VoiceOpsWindow::server_list_panel() {
     database_functions::retrieve_servers(mDBHandle, mServers);
 
     mServerListBox = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 5);
+    mServerListBox->set_margin_start(3);
     auto topBarVBox = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 5);
     auto serverListVBox = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 5);
     serverListVBox->set_vexpand(true);
+    serverListVBox->set_name("server-list-box");
 
     Gtk::Label* label = nullptr;
 
@@ -101,7 +103,6 @@ void VoiceOpsWindow::server_list_panel() {
         serverListVBox->set_valign(Gtk::Align::CENTER);
         mServerListBox->append(*serverListVBox);
 
-        mServerListBox->set_margin_start(10);
         return;
     }
 
@@ -120,8 +121,6 @@ void VoiceOpsWindow::server_list_panel() {
     }
     
     mServerListBox->append(*serverListVBox);
-
-    mServerListBox->set_margin_start(10);
 }
 
 void VoiceOpsWindow::on_server_button_clicked(ServerCard& pServer) {
@@ -165,45 +164,45 @@ void VoiceOpsWindow::refresh_server_list(const std::string& pServerName, const s
 }
 
 void VoiceOpsWindow::server_content_panel(bool pSelectedServer) {
-
     if (mServerContentBox == nullptr) {
         mServerContentBox = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 5);
-        mServerContentBox->set_hexpand(true);
+        auto innerWrapper = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 5);
+        innerWrapper->set_expand(true);
+        mServerContentBox->append(*innerWrapper);
+        mServerContentBox->set_margin_start(10);
     }
+
+    auto innerWrap = dynamic_cast<Gtk::Box*>(mServerContentBox->get_first_child());
+
     Gtk::Label* emptyLabel = nullptr;
-    mServerContentBox->set_name("content-box");
 
     if (!pSelectedServer) {
         emptyLabel = Gtk::make_managed<Gtk::Label>("Select a server from the left to view its contents.");
-        mServerContentBox->append(*emptyLabel);
-        mServerContentBox->set_valign(Gtk::Align::CENTER);
-        mServerContentBox->set_halign(Gtk::Align::CENTER);
-        mServerContentBox->set_margin_start(10);
+        innerWrap->append(*emptyLabel);
+        innerWrap->set_valign(Gtk::Align::CENTER);
+        innerWrap->set_halign(Gtk::Align::CENTER);
 
         return;
     }
 
-    auto child = mServerContentBox->get_first_child();
+    auto child = innerWrap->get_first_child();
     while (child != nullptr) {
-        mServerContentBox->remove(*child);
-        child = mServerContentBox->get_first_child();
+        innerWrap->remove(*child);
+        child = innerWrap->get_first_child();
     }
 
     Gtk::Label* serverName = Gtk::make_managed<Gtk::Label>(mSelectedServer->info.name);
     Gtk::Label* serverURL = Gtk::make_managed<Gtk::Label>(mSelectedServer->info.url);
     Gtk::Label* serverPort = Gtk::make_managed<Gtk::Label>(mSelectedServer->info.port);
 
-    mServerContentBox->append(*serverName);
-    mServerContentBox->append(*serverURL);
-    mServerContentBox->append(*serverPort);
-
-    mServerContentBox->set_margin_start(10);
+    innerWrap->append(*serverName);
+    innerWrap->append(*serverURL);
+    innerWrap->append(*serverPort);
 }
 
 Gtk::Box* VoiceOpsWindow::top_bar() {
     auto hbox = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 5);
     auto add_button = Gtk::make_managed<Gtk::Button>("+");
-    add_button->set_name("addingbutton");
     add_button->signal_clicked().connect(sigc::mem_fun(*this, &VoiceOpsWindow::on_add_button_clicked));
 
     add_button->set_margin(5);
@@ -211,6 +210,7 @@ Gtk::Box* VoiceOpsWindow::top_bar() {
     hbox->append(*add_button);
 
     hbox->set_halign(Gtk::Align::END);
+    hbox->set_name("top-bar");
 
     return hbox;
 }
@@ -219,6 +219,7 @@ void VoiceOpsWindow::on_add_button_clicked() {
     std::cout << "Add server button was clicked\n";
 
     auto dialog = Gtk::make_managed<AddServerDialog>(this);
+    dialog->set_name("add-dialog");
     dialog->signal_response().connect([this, dialog](int response_id) {on_add_server_response(*dialog, response_id);});
     dialog->show();
 }
