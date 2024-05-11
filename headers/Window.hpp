@@ -1,6 +1,10 @@
 #pragma once
 #include <gtkmm.h>
 #include <sqlite3.h>
+#include <thread>
+
+#define NOGDI
+#include <winsock2.h>
 
 #include "Database.hpp"
 #include "Dialogs.hpp"
@@ -16,6 +20,7 @@ class VoiceOpsWindow : public Gtk::Window {
         void on_add_button_clicked();
         void on_add_server_response(AddServerDialog& pDialog, int pResponseID);
         void on_server_button_clicked(ServerCard& pServer);
+        void on_send_button_clicked();
 
         void server_list_panel();
         void server_content_panel(bool);
@@ -30,6 +35,11 @@ class VoiceOpsWindow : public Gtk::Window {
         Glib::RefPtr<Gtk::Menu> mPopupMenu;
         std::vector<ServerCard> mServerCards;
         std::vector<ServerInfo> mServers;
+
+        Gtk::Entry* chatInput;
+        SOCKET clientSocket;
+        std::thread listenThread;
+        
     private:
         void setup_database();
         void refresh_server_list(const std::string& pServerName, const std::string& pServerURL, const std::string& pServerPort);

@@ -2,10 +2,88 @@
 
 #include "Dialogs.hpp"
 #include "Window.hpp"
+#include <ws2tcpip.h>
+
+struct DataStore {
+    char buffer[4096];
+    size_t bytes;
+};
+
+static Glib::RefPtr<Gtk::TextBuffer> chatHistory;
+static DataStore data;
+static GMutex mutex;
+
+gboolean update_textbuffer(void*) {
+    g_mutex_lock(&mutex);
+    auto msg = std::string(data.buffer, data.bytes);
+    g_mutex_unlock(&mutex);
+    std::cout << "Incoming: " << msg.c_str() << std::endl; // .c_str seems to fix emoji crash
+    chatHistory->place_cursor(chatHistory->end());
+    chatHistory->insert_at_cursor(msg);
+    chatHistory->insert_at_cursor("\n");
+    return G_SOURCE_REMOVE;
+}
+
+SOCKET createSocket(ServerInfo &server_info) {
+    SOCKET clientSocket;
+
+	//Setup Client Socket
+	clientSocket = INVALID_SOCKET;
+	clientSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	if (clientSocket == INVALID_SOCKET) {
+		std::cout << "Error at Socket(): " << WSAGetLastError() << std::endl;
+		WSACleanup();
+		return 0;
+	}
+	else {
+		std::cout << "Socket() is OK!" << std::endl;
+	}
+
+	//Connect to server and bind :: Fill in hint structure, which server to connect to
+	sockaddr_in clientService;
+	clientService.sin_family = AF_INET;
+	clientService.sin_port = htons(static_cast<u_short>(std::stoul(server_info.port)));
+	InetPton(AF_INET, server_info.url.c_str(), &clientService.sin_addr.s_addr);
+	if (connect(clientSocket, (SOCKADDR*)&clientService, sizeof(clientService)) == SOCKET_ERROR) {
+		std::cout << "Client:connect()- Failed to connect." << std::endl;
+		return 0;
+	}
+	else {
+		std::cout << "Client: connect() is OK!" << std::endl;
+		std::cout << "Client: Can Start Sending and receiving data" << std::endl;
+	}
+
+    return clientSocket;
+}
+
+void ReceiveMessages(SOCKET clientSocket) {
+	char buffer[4096];
+	ZeroMemory(buffer, 4096);
+	while (true) {
+		int bytesReceived = recv(clientSocket, buffer, sizeof(buffer), 0);
+		if (bytesReceived > 0) {
+            g_mutex_lock(&mutex);
+            memcpy(data.buffer, buffer, bytesReceived);
+            data.bytes = bytesReceived;
+            g_mutex_unlock(&mutex);
+            g_idle_add(update_textbuffer, NULL);
+		}
+		else if (bytesReceived == 0) {
+			std::cout << "Connection closed by server." << std::endl;
+			break;
+		}
+		else {
+			std::cerr << "Error in receiving data from server: " << WSAGetLastError() << std::endl;
+			break;
+		}
+	}
+}
 
 VoiceOpsWindow::VoiceOpsWindow() {
     set_title("VoiceOps");
     set_name("main-window");
+
+    chatHistory = Gtk::TextBuffer::create();
 
     int rc;
 
@@ -124,6 +202,23 @@ void VoiceOpsWindow::server_list_panel() {
 }
 
 void VoiceOpsWindow::on_server_button_clicked(ServerCard& pServer) {
+    SOCKET newSocket = createSocket(pServer.info);
+    if (newSocket == 0) {
+        auto dialog = Gtk::AlertDialog::create("Failed to connect to server.");
+        dialog->show(*this);
+
+        closesocket(newSocket);
+        return;
+    }
+
+    closesocket(clientSocket);
+    clientSocket = newSocket;
+
+    if (listenThread.joinable())
+        listenThread.join();
+
+    listenThread = std::thread(ReceiveMessages, clientSocket);
+
     mSelectedServer = &pServer;
     std::cout << "URL: " << pServer.info.url << '\n';
     std::cout << "Port: " << pServer.info.port << '\n';
@@ -159,17 +254,22 @@ void VoiceOpsWindow::refresh_server_list(const std::string& pServerName, const s
         }
     }
 
-    mSelectedServer = &mServerCards.back();
-    server_content_panel(true);
+    // mSelectedServer = &mServerCards.back();
+    // server_content_panel(true);
 }
 
 void VoiceOpsWindow::server_content_panel(bool pSelectedServer) {
     if (mServerContentBox == nullptr) {
-        mServerContentBox = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 5);
+        mServerContentBox = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 5);
         auto innerWrapper = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 5);
         innerWrapper->set_expand(true);
         mServerContentBox->append(*innerWrapper);
         mServerContentBox->set_margin_start(10);
+    } else {
+        auto child = mServerContentBox->get_last_child();
+        if (child != mServerContentBox->get_first_child()) {
+            mServerContentBox->remove(*child);
+        }
     }
 
     auto innerWrap = dynamic_cast<Gtk::Box*>(mServerContentBox->get_first_child());
@@ -198,6 +298,26 @@ void VoiceOpsWindow::server_content_panel(bool pSelectedServer) {
     innerWrap->append(*serverName);
     innerWrap->append(*serverURL);
     innerWrap->append(*serverPort);
+
+    chatHistory->set_text("CHAT:\n");
+
+    auto scrolled_window = Gtk::make_managed<Gtk::ScrolledWindow>();
+    auto chat_view = Gtk::make_managed<Gtk::TextView>();
+    chat_view->set_buffer(chatHistory);
+    chat_view->set_editable(false);
+    chat_view->set_cursor_visible(false);
+    scrolled_window->set_child(*chat_view);
+    scrolled_window->set_min_content_height(500);
+    mServerContentBox->append(*scrolled_window);
+
+    chatInput = Gtk::make_managed<Gtk::Entry>();
+    chatInput->signal_activate().connect(sigc::mem_fun(*this, &VoiceOpsWindow::on_send_button_clicked));
+    innerWrap->append(*chatInput);
+
+    auto send_button = Gtk::make_managed<Gtk::Button>("Send ->");
+    send_button->signal_clicked().connect(sigc::mem_fun(*this, &VoiceOpsWindow::on_send_button_clicked));
+    send_button->set_margin(5);
+    innerWrap->append(*send_button);
 }
 
 Gtk::Box* VoiceOpsWindow::top_bar() {
@@ -213,6 +333,20 @@ Gtk::Box* VoiceOpsWindow::top_bar() {
     hbox->set_name("top-bar");
 
     return hbox;
+}
+
+void VoiceOpsWindow::on_send_button_clicked() {
+    auto msg = chatInput->get_text();
+    std::cout << "Send button clicked. Message: " << msg.c_str() << "\n";
+    send(clientSocket, msg.c_str(), msg.bytes(), 0);
+    
+    chatHistory->place_cursor(chatHistory->end());
+    chatHistory->insert_at_cursor("You: ");
+    chatHistory->insert_at_cursor(msg);
+    chatHistory->insert_at_cursor("\n");
+    
+    chatInput->set_text("");
+    chatInput->grab_focus();
 }
 
 void VoiceOpsWindow::on_add_button_clicked() {
