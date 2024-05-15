@@ -224,15 +224,16 @@ int main(int argc, char *argv[])
       return 1;
     }
 
-    // Are packets being received in proper order?
-    if (incoming_pkt.packet_number != expected_pkt_number) {
-      if (expected_pkt_number == 0) {
-        expected_pkt_number = incoming_pkt.packet_number;
-      } else {
-        printf("Expected pkt no. %u. Got packet %u instead\n", expected_pkt_number, incoming_pkt.packet_number);
-      }
-    }
-    expected_pkt_number++;
+    // This does not compensate for completely lost packets.
+    // // Are packets being received in proper order?
+    // if (incoming_pkt.packet_number != expected_pkt_number) {
+    //   if (expected_pkt_number == 0) {
+    //     expected_pkt_number = incoming_pkt.packet_number;
+    //   } else {
+    //     // printf("Expected pkt no. %u. Got packet %u instead\n", expected_pkt_number, incoming_pkt.packet_number);
+    //   }
+    // }
+    // expected_pkt_number++;
 
     jb_insert(&buf, &incoming_pkt, recv_len - 4);
   }
