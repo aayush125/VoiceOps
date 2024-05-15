@@ -37,8 +37,12 @@ class VoiceOpsWindow : public Gtk::Window {
         std::vector<ServerInfo> mServers;
 
         Gtk::Entry* chatInput;
-        SOCKET clientSocket;
-        std::thread listenThread;
+        
+        // SOCKET clientUDPSocket;
+        SOCKET clientTCPSocket;        
+
+        std::thread listenThreadTCP;
+        std::thread listenThreadUDP;
         
     private:
         void setup_database();

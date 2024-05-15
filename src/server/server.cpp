@@ -7,6 +7,8 @@
 #include <sstream>
 #include <thread>
 #include <vector>
+
+#include <server/voice_server.h>
 // #include <sqlite3.h>
 
 //Creates the database if not available
@@ -120,6 +122,25 @@ int main(int argc, char* argv[]) {
     std::cout << "Server Initialised, I am waiting Connections" << std::endl;
   }
   
+  // Voice Chat socket
+  SOCKET voiceServerSocket = INVALID_SOCKET;
+  voiceServerSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+  if (voiceServerSocket == INVALID_SOCKET) {
+    std::cout << "Error at Socket(): " << WSAGetLastError() << std::endl;
+    WSACleanup();
+    return 0;
+  }
+
+  // Bind the UDP voice socket on the same port and ip as TCP socket
+  if (bind(voiceServerSocket, (SOCKADDR*)&service, sizeof(service)) == SOCKET_ERROR) {
+    std::cout << "Bind() failed!" << WSAGetLastError()<< std::endl;
+    closesocket(serverSocket);
+    WSACleanup();
+    return 0;
+  }
+
+  // Spin off the voice server to a separate thread
+  auto voiceProducerThread = std::thread(voiceReceiver, voiceServerSocket);
 
   fd_set master;
 
@@ -128,6 +149,7 @@ int main(int argc, char* argv[]) {
   FD_SET(serverSocket, &master);
 
   while (true) {
+    std::cout << "HELLO" << std::endl;
     fd_set copy = master;
     int socketCount = select(0, &copy, nullptr, nullptr, nullptr);
     

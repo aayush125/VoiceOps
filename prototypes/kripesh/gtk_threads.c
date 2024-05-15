@@ -203,6 +203,7 @@ int main(int argc, char *argv[])
   deviceConfig.noClip                     = TRUE;
   deviceConfig.wasapi.noAutoConvertSRC    = TRUE;
   deviceConfig.noPreSilencedOutputBuffer  = TRUE;
+  deviceConfig.periodSizeInFrames         = 480;
   maResult = ma_device_init(NULL, &deviceConfig, &device);
   if (maResult != MA_SUCCESS) {
     return maResult;
