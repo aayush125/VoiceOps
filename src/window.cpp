@@ -98,7 +98,7 @@ void VoiceOpsWindow::server_list_panel() {
     mServerListBox->append(*topBarVBox);
 
     if (mServers.empty()) {
-        label = Gtk::make_managed<Gtk::Label>("You have not joined a server yet.");
+        label = Gtk::make_managed<Gtk::Label>("You have not joined a server yet.\nClick the + button above to join one.");
         serverListVBox->append(*label);
         serverListVBox->set_valign(Gtk::Align::CENTER);
         mServerListBox->append(*serverListVBox);
