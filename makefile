@@ -1,7 +1,7 @@
 # Compiler and compiler flags
 CC := g++
 CFLAGS := `pkg-config --cflags --libs gtkmm-4.0`
-LDADD = `pkg-config --libs gtkmm-4.0` -lsqlite3
+LDADD = `pkg-config --libs gtkmm-4.0` -lws2_32 -lsqlite3
 
 # Directories
 INCLUDES := -Iheaders

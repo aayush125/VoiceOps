@@ -2,6 +2,21 @@
 
 #include "Dialogs.hpp"
 #include "Window.hpp"
+#include <ws2tcpip.h>
+
+#include "Networking.hpp"
+
+static DataStore data;
+static GMutex mutex;
+
+gboolean update_textbuffer(void*) {
+    g_mutex_lock(&mutex);
+    auto msg = std::string(data.buffer, data.bytes);
+    g_mutex_unlock(&mutex);
+    std::cout << "Incoming: " << msg.c_str() << '\n';
+
+    return G_SOURCE_REMOVE;
+}
 
 VoiceOpsWindow::VoiceOpsWindow() {
     set_title("VoiceOps");
@@ -124,6 +139,26 @@ void VoiceOpsWindow::server_list_panel() {
 }
 
 void VoiceOpsWindow::on_server_button_clicked(ServerCard& pServer) {
+    SOCKET newSocket = createSocket(pServer.info);
+    if (newSocket == 0) {
+        auto dialog = Gtk::AlertDialog::create("Failed to connect to server.");
+        dialog->show(*this);
+
+        closesocket(newSocket);
+        return;
+    }
+
+    closesocket(mClientSocket);
+    mClientSocket = newSocket;
+
+    if (mListenThread.joinable()) {
+        mListenThread.join();
+    }
+
+    mListenThread = std::thread([this]() {
+        ReceiveMessages(mClientSocket, std::ref(mutex), std::ref(data), *this);
+    });
+
     mSelectedServer = &pServer;
     std::cout << "URL: " << pServer.info.url << '\n';
     std::cout << "Port: " << pServer.info.port << '\n';
@@ -159,14 +194,14 @@ void VoiceOpsWindow::refresh_server_list(const std::string& pServerName, const s
         }
     }
 
-    mSelectedServer = &mServerCards.back();
-    server_content_panel(true);
+    // mSelectedServer = &mServerCards.back();
+    // server_content_panel(true);
 }
 
 void VoiceOpsWindow::server_content_panel(bool pSelectedServer) {
     if (mServerContentBox == nullptr) {
         mServerContentBox = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 5);
-        auto innerWrapper = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 5);
+        auto innerWrapper = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 5);
         innerWrapper->set_expand(true);
         mServerContentBox->append(*innerWrapper);
         mServerContentBox->set_margin_start(10);
@@ -190,14 +225,52 @@ void VoiceOpsWindow::server_content_panel(bool pSelectedServer) {
         innerWrap->remove(*child);
         child = innerWrap->get_first_child();
     }
+    innerWrap->set_valign(Gtk::Align::FILL);
+    innerWrap->set_halign(Gtk::Align::FILL);
 
-    Gtk::Label* serverName = Gtk::make_managed<Gtk::Label>(mSelectedServer->info.name);
-    Gtk::Label* serverURL = Gtk::make_managed<Gtk::Label>(mSelectedServer->info.url);
-    Gtk::Label* serverPort = Gtk::make_managed<Gtk::Label>(mSelectedServer->info.port);
+    // Define scrollWindow -> mChatList -> messageBox -> Name -> Message
+    auto scrollWindow = Gtk::make_managed<Gtk::ScrolledWindow>();
+    mChatList = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 5);
+    auto messageBox = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 5);
 
-    innerWrap->append(*serverName);
-    innerWrap->append(*serverURL);
-    innerWrap->append(*serverPort);
+    auto nameLabel = Gtk::make_managed<Gtk::Label>("Test Name");
+    nameLabel->set_hexpand(true);
+    nameLabel->set_halign(Gtk::Align::START);
+    auto messageLabel = Gtk::make_managed<Gtk::Label>("Test message: This is the message label");
+    messageLabel->set_hexpand(true);
+    messageLabel->set_halign(Gtk::Align::START);
+    
+    messageBox->append(*nameLabel);
+    messageBox->append(*messageLabel);
+    
+    mChatList->append(*messageBox);
+    mChatList->set_expand(true);
+    
+    scrollWindow->set_child(*mChatList);
+
+
+    // Gtk::Label* serverName = Gtk::make_managed<Gtk::Label>(mSelectedServer->info.name);
+    // Gtk::Label* serverURL = Gtk::make_managed<Gtk::Label>(mSelectedServer->info.url);
+    // Gtk::Label* serverPort = Gtk::make_managed<Gtk::Label>(mSelectedServer->info.port);
+
+    // innerWrap->append(*serverName);
+    // innerWrap->append(*serverURL);
+    // innerWrap->append(*serverPort);
+
+    auto textBox = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 5);
+    mMessageEntry = Gtk::make_managed<Gtk::Entry>();
+    mMessageEntry->signal_activate().connect(sigc::mem_fun(*this, &VoiceOpsWindow::on_send_button_clicked));
+    auto sendButton = Gtk::make_managed<Gtk::Button>("Send");
+    sendButton->signal_clicked().connect(sigc::mem_fun(*this, &VoiceOpsWindow::on_send_button_clicked));
+
+    mMessageEntry->set_hexpand(true);
+    textBox->set_hexpand(true);
+
+    textBox->append(*mMessageEntry);
+    textBox->append(*sendButton);
+
+    innerWrap->append(*scrollWindow);
+    innerWrap->append(*textBox);
 }
 
 Gtk::Box* VoiceOpsWindow::top_bar() {
@@ -213,6 +286,33 @@ Gtk::Box* VoiceOpsWindow::top_bar() {
     hbox->set_name("top-bar");
 
     return hbox;
+}
+
+void VoiceOpsWindow::on_send_button_clicked() {
+    auto message = mMessageEntry->get_text();
+
+    add_new_message(message.c_str());
+
+    send(mClientSocket, message.c_str(), message.bytes(), 0);
+
+    mMessageEntry->set_text("");
+    mMessageEntry->grab_focus();
+}
+
+void VoiceOpsWindow::add_new_message(const char* pMessage) {
+    auto messageBox = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 5);
+
+    auto nameLabel = Gtk::make_managed<Gtk::Label>("Name");
+    nameLabel->set_hexpand(true);
+    nameLabel->set_halign(Gtk::Align::START);
+    auto messageLabel = Gtk::make_managed<Gtk::Label>(pMessage);
+    messageLabel->set_hexpand(true);
+    messageLabel->set_halign(Gtk::Align::START);
+    
+    messageBox->append(*nameLabel);
+    messageBox->append(*messageLabel);
+
+    mChatList->append(*messageBox);
 }
 
 void VoiceOpsWindow::on_add_button_clicked() {

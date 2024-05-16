@@ -13,3 +13,8 @@ struct ServerCard {
     ServerInfo info;
     Gtk::Button* button;
 };
+
+struct DataStore {
+    char buffer[4096];
+    size_t bytes;
+};
