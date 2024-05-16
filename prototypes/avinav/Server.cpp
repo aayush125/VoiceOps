@@ -7,59 +7,66 @@
 #include <sstream>
 #include <thread>
 #include <vector>
-#include <sqlite3.h>
+#include <cstdint>
+#include "filefunction.h"
+#include "database.h"
 
-//Creates the database if not available
-static int createDB(const char* databasePath) {
-	sqlite3* DB;
-	int exit = sqlite3_open(databasePath, &DB);
-	sqlite3_close(DB);
-	return 0;
-}
+#define MAX_PACKET_SIZE 1500
 
-static int createTable(const char* databasePath) {
-	sqlite3* DB;
-	std::string sqlCommand = "Create TABLE IF NOT EXISTS MESSAGES("
-		"ID INTEGER PRIMARY KEY AUTOINCREMENT,"
-		"SENDER		TEXT NOT NULL,"
-		"MESSAGE	TEXT NOT NULL,"
-		"CHANNELID	INTEGER NOT NULL);";
+enum PacketType {
+	PACKET_TYPE_STRING = 1,
+	PACKET_TYPE_TEXT = 2,
+	PACKET_TYPE_PICTURE = 3
+};
 
-	try {
-		int exit = 0;
-		exit = sqlite3_open(databasePath, &DB);
+struct Packet {
+	uint32_t packetType;
+	uint32_t length;
+	char data[MAX_PACKET_SIZE];
+};
 
-		char* messageError;
-		exit = sqlite3_exec(DB, sqlCommand.c_str(), NULL, 0, &messageError);
+void receivePicture(SOCKET socket, Packet initialPacket) {
+	std::vector<unsigned char> pictureData;
+	pictureData.insert(pictureData.end(), initialPacket.data, initialPacket.data + initialPacket.length);
+	uint32_t expectedPacketType = PACKET_TYPE_PICTURE;
 
-		if (exit != SQLITE_OK) {
-			std::cerr << "Error Creating a table" << std::endl;
-			sqlite3_free(messageError);
+	while (true) {
+		Packet packet;
+		int bytesReceived = recv(socket, reinterpret_cast<char*>(&packet), sizeof(Packet), 0);
+		if (bytesReceived <= 0) {
+			// Handle error or connection closed
+			break;
 		}
-		sqlite3_close(DB);
+
+		if (packet.packetType != expectedPacketType) {
+			// Handle unexpected packet type
+			break;
+		}
+
+		pictureData.insert(pictureData.end(), packet.data, packet.data + packet.length);
+
+		if (packet.length < MAX_PACKET_SIZE) {
+			// Last packet received, stop receiving
+			break;
+		}
 	}
-	catch (const std::exception & e) {
-		std::cerr << e.what() << std::endl;
+
+	// Process the received picture data
+	std::cout << pictureData.size() << std::endl;
+	if (!pictureData.empty()) {
+		// Save or display the picture data
+		std::cout << "I received the image i guess" << std::endl;
+		std::string outputFilename = "output.jpg";
+		if (savePicture(pictureData, outputFilename)) {
+			std::cout << "Picture saved to " << outputFilename << std::endl;
+		}
+		else {
+			std::cout << "Failed to save picture" << std::endl;
+		}
+		
 	}
-	return 0;
 }
 
-static int insertData(const char* databasePath, std::string clientID, std::string message, int channelID) {
-	sqlite3* DB;
-	char* messageError;
-	int exit = sqlite3_open(databasePath, &DB);
-
-	std::string sql = "INSERT INTO MESSAGES (SENDER, MESSAGE) VALUES('" + clientID + "','" + message + "'," +  std::to_string(channelID) + ");";
-	std::cout << sql.c_str() << std::endl;
-
-	exit = sqlite3_exec(DB, sql.c_str(), NULL, 0, &messageError);
-
-	if (exit != SQLITE_OK) {
-		std::cerr << "Error Inserting data" << messageError << std::endl;
-		sqlite3_free(messageError);
-	}
-	return 0;
-}
 
 int main(int argc, char* argv[]) {
 	SOCKET serverSocket, acceptSocket;
@@ -144,29 +151,42 @@ int main(int argc, char* argv[]) {
 
 				//Send a welcome message to the connected client
 				std::string  welcomeMsg = "Welcome to the Server!";
-				send(acceptSocket, welcomeMsg.c_str(), welcomeMsg.size() + 1, 0);
+				Packet welcomePacket;
+				welcomePacket.packetType = PACKET_TYPE_STRING;
+				welcomePacket.length = static_cast<uint32_t>(welcomeMsg.length());
+				std::memcpy(welcomePacket.data, welcomeMsg.c_str(), welcomeMsg.length());
+				send(acceptSocket, reinterpret_cast<char*>(&welcomePacket), sizeof(Packet), 0);
 			}
 			else {
 				//Accept a new message
 				memset(buffer, 0, sizeof(buffer));
+				Packet packet;
 				int byteCount = 0;
-				byteCount = recv(sock, buffer, 4096, 0);
-				if (byteCount > 0) {
+				byteCount = recv(sock, reinterpret_cast<char*>(&packet), sizeof(Packet), 0);
+				if (byteCount > 0 && packet.packetType == PACKET_TYPE_STRING) {
 					//Broadcast the message to connected clients
 					std::ostringstream clientId;
+					std::string str(packet.data, packet.data + packet.length);
 					clientId << "Client #" << sock;
-					std::cout << clientId.str()<< buffer << std::endl;
+					std::cout << clientId.str()<< str << std::endl;
 					const int channelID = 1;
 					//insertData(directoryDatabase, clientId.str(), buffer, channelID);
 					for (int j = 0; j < master.fd_count; j++) {
 						SOCKET outSock = master.fd_array[j];
 						if (outSock != serverSocket && outSock != sock) {
 							std::ostringstream ss;
-							ss <<clientId.str() << buffer << "\r\n";
+							ss <<clientId.str() << str << "\r\n";
 							std::string strOut = ss.str();
-							send(outSock, strOut.c_str(), strOut.size() + 1, 0);
+							Packet broadcastingPacket;
+							broadcastingPacket.packetType = packet.packetType;
+							broadcastingPacket.length = static_cast<uint32_t>(strOut.length());
+							std::memcpy(broadcastingPacket.data, strOut.c_str(), strOut.length());
+							send(outSock, reinterpret_cast<char*>(&broadcastingPacket), sizeof(Packet), 0);
 						}
 					}
+				}
+				else if(packet.packetType == PACKET_TYPE_PICTURE){
+					receivePicture(sock, packet);
 				}
 				else {
 					closesocket(sock);
@@ -175,7 +195,6 @@ int main(int argc, char* argv[]) {
 			}
 		}
 	}
-
 
 	//CLose socket
 	system("pause");

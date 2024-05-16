@@ -1,17 +1,28 @@
+#include <algorithm>
 #include <WinSock2.h>
 #include <WS2tcpip.h>
 #include <iostream>
 #include <tchar.h>
 #include <string>
 #include <thread>
+#include <cstdint>
+#include <vector>
+#include "file.h"
+#define MAX_PACKET_SIZE 1500
+#define min(a,b) (a < b ? a : b)
+
+
+std::string pictureFilename = "C:\\Users\\bhatt\\OneDrive\\Pictures\\Screenshots\\file.png";
 
 void ReceiveMessages(SOCKET clientSocket) {
 	char buffer[4096];
 	ZeroMemory(buffer, 4096);
+	Packet receivePacket;
 	while (true) {
-		int bytesReceived = recv(clientSocket, buffer, sizeof(buffer), 0);
-		if (bytesReceived > 0) {
-			std::cout << std::string(buffer, bytesReceived) << std::endl;
+		int bytesReceived = recv(clientSocket, reinterpret_cast<char*>(&receivePacket), sizeof(Packet), 0);
+		if (bytesReceived > 0 && receivePacket.packetType == PACKET_TYPE_STRING) {
+			std::string str(receivePacket.data, receivePacket.data + receivePacket.length);
+			std::cout << str << std::endl;
 		}
 		else if (bytesReceived == 0) {
 			std::cout << "Connection closed by server." << std::endl;
@@ -24,19 +35,53 @@ void ReceiveMessages(SOCKET clientSocket) {
 	}
 }
 
+void sendPicture(const std::string& filename, SOCKET socket) {
+	std::vector<unsigned char> pictureData = loadPicture(filename);
+	std::cout << pictureData.size() << std::endl;
+	if (pictureData.empty()) {
+		// Handle error
+		return;
+	}
+
+	const uint32_t packetType = PACKET_TYPE_PICTURE;
+	const size_t dataSize = pictureData.size();
+	const size_t numPackets = (dataSize + MAX_PACKET_SIZE - 1) / MAX_PACKET_SIZE;
+
+	for (size_t i = 0; i < numPackets; ++i) {
+		Packet packet;
+		packet.packetType = packetType;
+		packet.length = static_cast<uint32_t>(min(dataSize - i * MAX_PACKET_SIZE, MAX_PACKET_SIZE));
+		std::memcpy(packet.data, pictureData.data() + i * MAX_PACKET_SIZE, packet.length);
+
+		// Send the packet over the network
+		send(socket, reinterpret_cast<const char*>(&packet), sizeof(Packet), 0);
+	}
+}
+
+
 void SendMessages(SOCKET clientSocket) {
 	std::string userInput;
+	Packet packet;
 	do {
 		std::getline(std::cin, userInput);
+		packet.packetType = PACKET_TYPE_STRING;
 		if (!userInput.empty()) {
-			int byteCount = send(clientSocket, userInput.c_str(), userInput.size(), 0);
-			if (byteCount == SOCKET_ERROR) {
-				std::cerr << "Error in sending data to server: " << WSAGetLastError() << std::endl;
-				break;
+			if (std::strcmp(userInput.c_str(), "/image") == 0){
+				sendPicture(pictureFilename, clientSocket);
+			}
+			else {
+				packet.length = static_cast<uint32_t>(userInput.length());
+				std::memcpy(packet.data, userInput.c_str(), userInput.length());
+				int byteCount = send(clientSocket, reinterpret_cast<const char*>(&packet), sizeof(Packet), 0);
+				if (byteCount == SOCKET_ERROR) {
+					std::cerr << "Error in sending data to server: " << WSAGetLastError() << std::endl;
+					break;
+				}
 			}
 		}
 	} while (!userInput.empty());
 }
+
 
 int main(int argc, char* argv[]) {
 	SOCKET clientSocket;
@@ -90,23 +135,6 @@ int main(int argc, char* argv[]) {
 	//Join the thread to the main thread
 	receiveThread.join();
 
-	//std::string userInput;
-
-	//do {
-	//	std::cout << "PLease enter a message: ";
-	//	getline(std::cin, userInput);
-	//	if (userInput.size() > 0) {
-	//		int byteCount = send(clientSocket, userInput.c_str(), userInput.size() + 1, 0);
-	//		if (byteCount != SOCKET_ERROR) {
-	//			//Wait for response
-	//			int bytesReceived = recv(clientSocket, buffer, 4096, 0);
-	//			if (bytesReceived > 0) {
-	//				std::cout << std::string(buffer, 0, bytesReceived) << std::endl;
-	//			}
-	//		}
-	//	}
-	//} while (userInput.size() > 0);
-	
 
 	//Close the socket
 	system("pause");
