@@ -5,6 +5,7 @@
 #include <thirdparty/opus/opus.h>
 #include <thread>
 #include <timeapi.h>
+#include <thirdparty/renamenoise.h>
 
 struct ClientSocket {
   uint32_t address; 
@@ -25,6 +26,9 @@ struct ClientData {
   OpusDecoder *dec;
   OpusEncoder *enc;
   JitterBuffer jb;
+
+  ReNameNoiseDenoiseState *denoiser_l;
+  ReNameNoiseDenoiseState *denoiser_r;
 };
 
 #define MAX_CLIENTS 10
@@ -37,86 +41,124 @@ struct Clients {
   ClientData data[MAX_CLIENTS];
 };
 
-void packetConsumer(SOCKET voiceSocket, Clients *clients) {
+// #include <time.h>
+
+// double get_time_diff(struct timespec end, struct timespec start) {
+//   double difference = (double) (end.tv_sec - start.tv_sec) + 1.0e-9 * (double) (end.tv_nsec - start.tv_nsec);
+//   return difference * 1.0e6;
+// }
+
+struct SharedData {
+  Clients *clients;
+  SOCKET voiceSocket;
+};
+
+void CALLBACK TimeProc(UINT uID, UINT uMsg, DWORD_PTR dwUser, DWORD_PTR dw1, DWORD_PTR dw2) {
+  SharedData *data = (SharedData *) dwUser;
+  auto &clients = data->clients;
+  auto &voiceSocket = data->voiceSocket;
+  
   VoicePacketToServer pkt;
   uint16_t size;
 
   // 10 ms at 48000 hz, 16 bit pcm, 2 channels
   int16_t audio[960];
-
-  // TODO @kripesh101: process multiple packets simultaneously rather than sleeping
-  // after processing every packet
-  timeBeginPeriod(1);
   
-  while (true) {
-    auto now = std::chrono::steady_clock::now();
-    auto next_time = now + std::chrono::milliseconds(8);
+  // Do processing
+  uint8_t count;
+  g_mutex_lock(&clients->count_lock);
+  count = clients->count;
+  g_mutex_unlock(&clients->count_lock);
 
-    // Do processing
-    uint8_t count;
-    g_mutex_lock(&clients->count_lock);
-    count = clients->count;
-    g_mutex_unlock(&clients->count_lock);
+  for (uint8_t i = 0; i < count; i++) {
+    auto &current = clients->data[i];
+    
+    if (current.jb.get(&pkt, &size)) {
+      // handle pkt loss
+      if (current.prev_consumed_pkt != 0) {
+        for (uint32_t i2 = current.prev_consumed_pkt + 1; i2 < pkt.packet_number; i2++) {
+          std::cout << "Packet loss - BAD!" << std::endl;
 
-    for (uint8_t i = 0; i < count; i++) {
-      auto &current = clients->data[i];
-      
-      if (current.jb.get(&pkt, &size)) {
-        // handle pkt loss
-        if (current.prev_consumed_pkt != 0) {
-          for (uint32_t i2 = current.prev_consumed_pkt + 1; i2 < pkt.packet_number; i2++) {
-            std::cout << "Packet loss - BAD!" << std::endl;
-
-            int len = opus_decode(current.dec, NULL, 0, audio, 480, 0);
-            if (len < 0) {
-              std::cout << "OPUS ERROR: " << len << std::endl;
-            }
-          }
-        }
-        current.prev_consumed_pkt = pkt.packet_number;
-
-        int len = opus_decode(current.dec, pkt.encoded_data, size, audio, 480, 0);
-        if (len < 0) {
-          std::cout << "OPUS ERROR: " << len << std::endl;
-        }
-
-        // We have the packet decoded. We could do additional
-        // processing, but for now, just reencode and sent to client
-
-        VoicePacketFromServer outgoing_pkt;
-        outgoing_pkt.packet_number = ++current.last_sent_pkt;
-        outgoing_pkt.userID = i;
-        len = opus_encode(current.enc, audio, 480, outgoing_pkt.encoded_data, 400);
-
-        // Send to all other clients
-        for (uint8_t j = 0; j < count; j++) {
-          if (j == i) {
-            continue;
-          }
-
-          int bytesSent = sendto(voiceSocket, (const char *)&outgoing_pkt, len + 1 + 4, 0, (sockaddr*)&clients->sockaddrs[j], sizeof(sockaddr_in));
-          if (bytesSent == SOCKET_ERROR) {
-            std::cout << "sendto() failed with error code : " << WSAGetLastError() << std::endl;
-            continue;
+          int len = opus_decode(current.dec, NULL, 0, audio, 480, 0);
+          if (len < 0) {
+            std::cout << "OPUS ERROR: " << len << std::endl;
           }
         }
       }
-    }
+      current.prev_consumed_pkt = pkt.packet_number;
 
+      int len = opus_decode(current.dec, pkt.encoded_data, size, audio, 480, 0);
+      if (len < 0) {
+        std::cout << "OPUS ERROR: " << len << std::endl;
+      }
 
-    now = std::chrono::steady_clock::now();
-    if (now > next_time) {
-      std::cout << "Warning: Packet consumer thread took too long to process packets." << std::endl;
-    }
+      float temp_l[480];
+      float temp_r[480];
 
-    int32_t sleep_time = std::chrono::duration_cast<std::chrono::milliseconds>(next_time - now).count();
+      int16_t processed_l[480];
+      int16_t processed_r[480];
 
-    if (sleep_time > 0) {
-      Sleep(sleep_time);
+      for (int j = 0; j < 480; j++) {
+        temp_l[j] = audio[j * 2];
+        temp_r[j] = audio[j * 2 + 1];
+      }
+
+      renamenoise_process_frame_clamped(current.denoiser_l, processed_l, temp_l);
+      renamenoise_process_frame_clamped(current.denoiser_r, processed_r, temp_r);
+
+      for (int j = 0; j < 480; j++) {
+        audio[j * 2] = processed_l[j];
+        audio[j * 2 + 1] = processed_r[j];
+      }
+
+      // reencode and sent to client
+      VoicePacketFromServer outgoing_pkt;
+      outgoing_pkt.packet_number = ++current.last_sent_pkt;
+      // outgoing_pkt.packet_number = pkt.packet_number;
+      outgoing_pkt.userID = i;
+      // memcpy(outgoing_pkt.encoded_data, pkt.encoded_data, size);
+      len = opus_encode(current.enc, audio, 480, outgoing_pkt.encoded_data, 400);
+      if (len < 0) {
+        std::cout << "OPUS ERROR: " << len << std::endl;
+      }
+
+      // Send to all other clients
+      for (uint8_t j = 0; j < count; j++) {
+        if (j == i) {
+          continue;
+        }
+
+        int bytesSent = sendto(voiceSocket, (const char *)&outgoing_pkt, len + 4 + 4, 0, (sockaddr*)&clients->sockaddrs[j], sizeof(sockaddr_in));
+        if (bytesSent == SOCKET_ERROR) {
+          std::cout << "sendto() failed with error code : " << WSAGetLastError() << std::endl;
+          continue;
+        }
+      }
     }
   }
+}
 
-  timeEndPeriod(1);
+
+void packetConsumer(SOCKET voiceSocket, Clients *clients) {
+  timeBeginPeriod(1);
+
+  SharedData data;
+  data.clients = clients;
+  data.voiceSocket = voiceSocket;
+
+  timeSetEvent(10, 0, TimeProc, (DWORD_PTR) &data, TIME_PERIODIC);
+
+  while (true) {
+    Sleep(1000);
+  }
+
+    // struct timespec test;
+    // clock_gettime(CLOCK_MONOTONIC, &test);
+    // std::cout << test.tv_nsec / 1000000 << std::endl;
+
+
+  // timeEndPeriod(1);
+  
 }
 
 void voiceReceiver(SOCKET voiceSocket) {
@@ -144,6 +186,9 @@ void voiceReceiver(SOCKET voiceSocket) {
 
     opus_encoder_ctl(clients.data[i].enc, OPUS_SET_BITRATE(64000));
     opus_encoder_ctl(clients.data[i].enc, OPUS_SET_COMPLEXITY(10));
+
+    clients.data[i].denoiser_l = renamenoise_create(NULL);
+    clients.data[i].denoiser_r = renamenoise_create(NULL);
   }
 
   // Start another thread to consume and process voice packets. This thread is put on a timer.
@@ -159,9 +204,11 @@ void voiceReceiver(SOCKET voiceSocket) {
 
     ClientSocket curSocket = {sender.sin_addr.S_un.S_addr, sender.sin_port};
     ClientData *curData = nullptr;
+    int current = -1;
     for (int i = 0; i < clients.count; i++) {
       if (clients.sockets[i] == curSocket) {
         curData = &clients.data[i];
+        current = i;
         break;
       }
     }
@@ -175,15 +222,37 @@ void voiceReceiver(SOCKET voiceSocket) {
       clients.sockets[clients.count] = curSocket;
       clients.sockaddrs[clients.count] = sender;
       curData = &clients.data[clients.count];
+      current = clients.count;
       
       g_mutex_lock(&clients.count_lock);
       clients.count++;
       g_mutex_unlock(&clients.count_lock);
     }
 
+    /* // Alternative 1: No server-side processing. Just forward packets.
+    VoicePacketFromServer outgoing_pkt;
+    outgoing_pkt.packet_number = incoming_pkt.packet_number;
+    outgoing_pkt.userID = current;
+    memcpy(outgoing_pkt.encoded_data, incoming_pkt.encoded_data, recv_len - 4);
+
+    Send to all other clients
+    for (uint8_t j = 0; j < clients.count; j++) {
+      // if (j == current) {
+      //   continue;
+      // }
+
+      // + 4 due to byte alignment
+      int bytesSent = sendto(voiceSocket, (const char *)&outgoing_pkt, recv_len + 4, 0, (sockaddr*)&clients.sockaddrs[j], sizeof(sockaddr_in));
+      if (bytesSent == SOCKET_ERROR) {
+        std::cout << "sendto() failed with error code : " << WSAGetLastError() << std::endl;
+        continue;
+      }
+    }
+    */
+
     // Now that we know which client sent the packet, we can put the packet in the appropriate jitter buffer
     curData->jb.insert(&incoming_pkt, recv_len - 4); // - 4 bytes is of packet/sequence number
   }
 
-  g_mutex_clear(&clients.count_lock);
+  // g_mutex_clear(&clients.count_lock);
 }

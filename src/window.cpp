@@ -13,6 +13,8 @@
 // #define MA_NO_NODE_GRAPH
 #include <thirdparty/miniaudio.h>
 
+#include <time.h>
+
 struct DataStore {
     char buffer[4096];
     size_t bytes;
@@ -119,7 +121,7 @@ struct Clients {
   ClientData data[MAX_CLIENTS];
 };
 
-static Clients clients;
+static Clients *clients_ptr;
 
 static OpusEncoder *enc;
 
@@ -135,12 +137,11 @@ void data_callback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uin
   
   VoicePacketToServer pkt;
   uint16_t size;
-
   opus_int32 workingBuffer[960] = {0};
   opus_int16 tempStore[960];
 
   for (int i = 0; i < MAX_CLIENTS; i++) {
-    auto &current = clients.data[i];
+    auto &current = clients_ptr->data[i];
     if (current.jb.get(&pkt, &size)) {
       // handle pkt loss
       if (current.prev_consumed_pkt != 0) {
@@ -180,9 +181,13 @@ void data_callback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uin
   }
 
   current_pkt_number++;
+
 }
 
 void ReceiveVoice(SOCKET voiceSocket) {
+  Clients clients;
+  clients_ptr = &clients;
+
   VoicePacketFromServer incoming_pkt;
 
   int error;
@@ -200,6 +205,8 @@ void ReceiveVoice(SOCKET voiceSocket) {
     return;
   }
 
+  ma_device_start(&device);
+
   while (true) {
     int recv_len = recv(voiceSocket, (char *) &incoming_pkt, sizeof(VoicePacketFromServer), 0);
     if (recv_len == SOCKET_ERROR) {
@@ -208,10 +215,11 @@ void ReceiveVoice(SOCKET voiceSocket) {
     }
 
     VoicePacketToServer pkt;
-    memcpy(pkt.encoded_data, incoming_pkt.encoded_data, recv_len - 5);
+    // Byte alignment makes this - 8
+    memcpy(pkt.encoded_data, incoming_pkt.encoded_data, recv_len - 8);
     pkt.packet_number = incoming_pkt.packet_number;
 
-    clients.data[incoming_pkt.userID].jb.insert(&pkt, recv_len - 4); // - 4 bytes is of packet/sequence number
+    clients.data[incoming_pkt.userID].jb.insert(&pkt, recv_len - 8); // - 4 bytes is of packet/sequence number
   }
 }
 
@@ -384,8 +392,6 @@ void VoiceOpsWindow::on_server_button_clicked(ServerCard& pServer) {
 
     listenThreadTCP = std::thread(ReceiveMessages, clientTCPSocket);
     listenThreadUDP = std::thread(ReceiveVoice, clientUDPSocket);
-
-    ma_device_start(&device);
 
     mSelectedServer = &pServer;
     std::cout << "URL: " << pServer.info.url << '\n';

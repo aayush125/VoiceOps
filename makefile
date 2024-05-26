@@ -1,7 +1,7 @@
 # Compiler and compiler flags
 CC := g++
-COMMON_CFLAGS := `pkg-config --cflags --libs glib-2.0` # -O2
-COMMON_LDADD := `pkg-config --libs glib-2.0` -Llib -lopus -lws2_32 -lsqlite3 # -O2
+COMMON_CFLAGS := `pkg-config --cflags --libs glib-2.0` -O0 -g # -O2
+COMMON_LDADD := `pkg-config --libs glib-2.0` -Llib -lopus -lws2_32 -lsqlite3 -g -O0 # -O2
 
 # Client flags
 CFLAGS := `pkg-config --cflags --libs gtkmm-4.0` $(COMMON_CFLAGS)
@@ -9,7 +9,7 @@ LDADD := `pkg-config --libs gtkmm-4.0` $(COMMON_LDADD)
 
 # Server flags
 SERVER_CFLAGS := $(COMMON_CFLAGS)
-SERVER_LDADD := $(COMMON_LDADD) -lwinmm
+SERVER_LDADD := $(COMMON_LDADD) -lwinmm -lrenamenoise
 
 # Directories
 INCLUDES := -Iheaders

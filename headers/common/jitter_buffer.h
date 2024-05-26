@@ -13,7 +13,7 @@ struct VoicePacketToServer {
 
 struct VoicePacketFromServer {
   uint32_t packet_number;
-  uint8_t userID;
+  uint32_t userID;
   uint8_t encoded_data[SLOT_SIZE];
 };
 
