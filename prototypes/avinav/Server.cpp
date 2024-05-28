@@ -10,8 +10,10 @@
 #include <cstdint>
 #include "filefunction.h"
 #include "database.h"
-
+#include <bcrypt.h>
+#include <random>
 #define MAX_PACKET_SIZE 1500
+
 
 enum PacketType {
 	PACKET_TYPE_STRING = 1,
@@ -24,6 +26,7 @@ struct Packet {
 	uint32_t length;
 	char data[MAX_PACKET_SIZE];
 };
+
 
 void receivePicture(SOCKET socket, Packet initialPacket) {
 	std::vector<unsigned char> pictureData;
@@ -72,10 +75,10 @@ int main(int argc, char* argv[]) {
 	SOCKET serverSocket, acceptSocket;
 	int port = 55555;
 	int MAXCONN = 30;
-	char buffer[4096];
-	ZeroMemory(buffer, 4096);
 	//Loading the database file
-	const char* directoryDatabase = "C:\\Codes\\C++ Socket Connection - Server\\Database\\server.db";
+	std::string directoryDatabaseString = "C:\\Codes\\C++ Socket Connection - Server\\Database\\" + std::to_string(port) + ".db";
+	const char* directoryDatabase = directoryDatabaseString.c_str();
+
 	createDB(directoryDatabase);
 	createTable(directoryDatabase);
 	//Loading the dll file
@@ -98,10 +101,10 @@ int main(int argc, char* argv[]) {
 		return 0;
 	}
 
-
 	//Bind the ip and port number to the socket
 	sockaddr_in service;
 	service.sin_family = AF_INET;
+	
 	InetPton(AF_INET, _T("0.0.0.0"), &service.sin_addr.s_addr);
 	service.sin_port = htons(port);
 	if (bind(serverSocket, (SOCKADDR*)&service, sizeof(service)) == SOCKET_ERROR) {
@@ -149,9 +152,21 @@ int main(int argc, char* argv[]) {
 				//Add the new connection to the list of connected Clients
 				FD_SET(acceptSocket, &master);
 
-				//Send a welcome message to the connected client
+				Packet usernamePacket, challengePacket, welcomePacket;
+				//Receive username
+				int byteCount = recv(acceptSocket, reinterpret_cast<char*>(&usernamePacket), sizeof(usernamePacket), 0);
+				std::string str(usernamePacket.data, usernamePacket.data + usernamePacket.length);
+				std::cout << "Username of client is:"<< str << std::endl;
+
+				//search for username in the database and if exists then send password over connection
+				
+				challengePacket.packetType = PACKET_TYPE_STRING;
+				std::string challenge = "password";
+				challengePacket.length = static_cast<uint32_t>(challenge.length());
+				std::memcpy(challengePacket.data, challenge.c_str(), challenge.length());
+				send(acceptSocket, reinterpret_cast<char*>(&challengePacket), sizeof(Packet), 0);
+
 				std::string  welcomeMsg = "Welcome to the Server!";
-				Packet welcomePacket;
 				welcomePacket.packetType = PACKET_TYPE_STRING;
 				welcomePacket.length = static_cast<uint32_t>(welcomeMsg.length());
 				std::memcpy(welcomePacket.data, welcomeMsg.c_str(), welcomeMsg.length());
@@ -159,10 +174,10 @@ int main(int argc, char* argv[]) {
 			}
 			else {
 				//Accept a new message
-				memset(buffer, 0, sizeof(buffer));
 				Packet packet;
 				int byteCount = 0;
 				byteCount = recv(sock, reinterpret_cast<char*>(&packet), sizeof(Packet), 0);
+				
 				if (byteCount > 0 && packet.packetType == PACKET_TYPE_STRING) {
 					//Broadcast the message to connected clients
 					std::ostringstream clientId;
@@ -170,7 +185,9 @@ int main(int argc, char* argv[]) {
 					clientId << "Client #" << sock;
 					std::cout << clientId.str()<< str << std::endl;
 					const int channelID = 1;
-					//insertData(directoryDatabase, clientId.str(), buffer, channelID);
+					std::cout << str << std::endl;
+					insertData(directoryDatabase, clientId.str(), str, channelID);
+
 					for (int j = 0; j < master.fd_count; j++) {
 						SOCKET outSock = master.fd_array[j];
 						if (outSock != serverSocket && outSock != sock) {
@@ -184,6 +201,7 @@ int main(int argc, char* argv[]) {
 							send(outSock, reinterpret_cast<char*>(&broadcastingPacket), sizeof(Packet), 0);
 						}
 					}
+
 				}
 				else if(packet.packetType == PACKET_TYPE_PICTURE){
 					receivePicture(sock, packet);
