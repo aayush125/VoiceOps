@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <WinSock2.h>
 #include <WS2tcpip.h>
+#include <windows.h>
 #include <iostream>
 #include <tchar.h>
 #include <string>
@@ -12,11 +13,12 @@
 #define min(a,b) (a < b ? a : b)
 
 
+
 std::string pictureFilename = "C:\\Users\\bhatt\\OneDrive\\Pictures\\Screenshots\\file.png";
 
+
 void ReceiveMessages(SOCKET clientSocket) {
-	char buffer[4096];
-	ZeroMemory(buffer, 4096);
+
 	Packet receivePacket;
 	while (true) {
 		int bytesReceived = recv(clientSocket, reinterpret_cast<char*>(&receivePacket), sizeof(Packet), 0);
@@ -124,6 +126,32 @@ int main(int argc, char* argv[]) {
 		return 0;
 	}
 	else {
+		//Send the username to the server
+		Packet packet, passwordPacket;
+		packet.packetType = PACKET_TYPE_STRING;
+		std::cout << "Username:";
+		std::string userInput;
+		std::getline(std::cin, userInput);
+		packet.length = static_cast<uint32_t>(userInput.length());
+		std::memcpy(packet.data, userInput.c_str(), userInput.length());
+		int byteCount = send(clientSocket, reinterpret_cast<const char*>(&packet), sizeof(Packet), 0);
+		if (byteCount == SOCKET_ERROR) {
+			std::cerr << "Error in sending data to server: " << WSAGetLastError() << std::endl;
+		}
+		std::cout << "Password:";
+		std::getline(std::cin, userInput);
+
+		//Receive password from the server
+		byteCount = recv(clientSocket, reinterpret_cast<char*>(&passwordPacket), sizeof(Packet), 0);
+		if (byteCount == SOCKET_ERROR) {
+			std::cerr << "Error in Receiving data to server: " << WSAGetLastError() << std::endl;
+		}
+		std::string password(passwordPacket.data, passwordPacket.data + passwordPacket.length);
+		if (std::strcmp(userInput.c_str(), password.c_str()) != 0) {
+			std::cout << "Incorrect password!" << std::endl;
+			WSACleanup();
+			return 0;
+		}
 		std::cout << "Client: connect() is OK!" << std::endl;
 		std::cout << "Client: Can Start Sending and receiving data" << std::endl;
 	}
