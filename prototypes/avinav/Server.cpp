@@ -10,10 +10,9 @@
 #include <cstdint>
 #include "filefunction.h"
 #include "database.h"
-#include <bcrypt.h>
-#include <random>
 #define MAX_PACKET_SIZE 1500
 
+std::vector<data> databaseQuery;
 
 enum PacketType {
 	PACKET_TYPE_STRING = 1,
@@ -81,6 +80,8 @@ int main(int argc, char* argv[]) {
 
 	createDB(directoryDatabase);
 	createTable(directoryDatabase);
+	databaseQuery = selectData(directoryDatabase);
+	
 	//Loading the dll file
 	WSADATA wsaData;
 	int wsaerr;
@@ -134,6 +135,7 @@ int main(int argc, char* argv[]) {
 		fd_set copy = master;
 		int socketCount = select(0, &copy, nullptr, nullptr, nullptr);
 		
+		
 		for (int i = 0; i < socketCount;i++) {
 			SOCKET sock = copy.fd_array[i];
 			if (sock == serverSocket) {
@@ -152,7 +154,7 @@ int main(int argc, char* argv[]) {
 				//Add the new connection to the list of connected Clients
 				FD_SET(acceptSocket, &master);
 
-				Packet usernamePacket, challengePacket, welcomePacket;
+				Packet usernamePacket, challengePacket, welcomePacket, messagePacket;
 				//Receive username
 				int byteCount = recv(acceptSocket, reinterpret_cast<char*>(&usernamePacket), sizeof(usernamePacket), 0);
 				std::string str(usernamePacket.data, usernamePacket.data + usernamePacket.length);
@@ -171,6 +173,17 @@ int main(int argc, char* argv[]) {
 				welcomePacket.length = static_cast<uint32_t>(welcomeMsg.length());
 				std::memcpy(welcomePacket.data, welcomeMsg.c_str(), welcomeMsg.length());
 				send(acceptSocket, reinterpret_cast<char*>(&welcomePacket), sizeof(Packet), 0);
+
+				//send the messages to client
+				messagePacket.packetType = PACKET_TYPE_STRING;
+				for (const auto& row : databaseQuery) {
+					std::ostringstream sendThis;
+					sendThis << row.sender << ":" << row.message << "\r\n";
+					std::string outMessage = sendThis.str();
+					messagePacket.length = static_cast<uint32_t>(outMessage.length());
+					std::memcpy(messagePacket.data, outMessage.c_str(), outMessage.length());
+					send(acceptSocket, reinterpret_cast<char*>(&messagePacket), sizeof(Packet), 0);
+				}
 			}
 			else {
 				//Accept a new message
