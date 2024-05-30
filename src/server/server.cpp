@@ -11,6 +11,8 @@
 #include <cstdint>
 #include "filefunction.h"
 #include "database.h"
+#include <server/voice_server.h>
+
 #define MAX_PACKET_SIZE 1500
 
 std::vector<data> databaseQuery;
@@ -105,11 +107,18 @@ bool handleNewConnection(SOCKET acceptSocket) {
 }
 
 int main(int argc, char* argv[]) {
+    int port;
+    if (argc == 2) {
+        port = atoi(argv[1]);
+    } else {
+        std::cout << "Enter a port: ";
+        std::cin >> port;
+    }
+
     SOCKET serverSocket, acceptSocket;
-    int port = 55555;
     int MAXCONN = 30;
     // Loading the database file
-    std::string directoryDatabaseString = "C:\\Codes\\C++ Socket Connection - Server\\Database\\" + std::to_string(port) + ".db";
+    std::string directoryDatabaseString = "database/server.db";
     const char* directoryDatabase = directoryDatabaseString.c_str();
 
     createDB(directoryDatabase);
@@ -155,6 +164,26 @@ int main(int argc, char* argv[]) {
     } else {
         std::cout << "Server Initialised, I am waiting Connections" << std::endl;
     }
+    
+    // Voice Chat socket
+    SOCKET voiceServerSocket = INVALID_SOCKET;
+    voiceServerSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    if (voiceServerSocket == INVALID_SOCKET) {
+        std::cout << "Error at Socket(): " << WSAGetLastError() << std::endl;
+        WSACleanup();
+        return 0;
+    }
+
+    // Bind the UDP voice socket on the same port and ip as TCP socket
+    if (bind(voiceServerSocket, (SOCKADDR*)&service, sizeof(service)) == SOCKET_ERROR) {
+        std::cout << "Bind() failed!" << WSAGetLastError()<< std::endl;
+        closesocket(serverSocket);
+        WSACleanup();
+        return 0;
+    }
+
+    // Spin off the voice server to a separate thread
+    auto voiceProducerThread = std::thread(voiceReceiver, voiceServerSocket);
 
     fd_set master;
 

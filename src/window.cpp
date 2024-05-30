@@ -13,6 +13,8 @@
 // #define MA_NO_NODE_GRAPH
 #include <thirdparty/miniaudio.h>
 
+#include <common/text_packet.h>
+
 #include <time.h>
 
 struct DataStore {
@@ -61,6 +63,32 @@ bool createSocket(ServerInfo& server_info, SOCKET* tcpSocket, SOCKET* udpSocket)
         closesocket(*tcpSocket);
         return false;
     } else {
+        // Send the username to the server
+        Packet packet, passwordPacket;
+        packet.packetType = PACKET_TYPE_STRING;
+
+        // Todo (@kripesh101 | @aayush125): add a proper username field to ServerInfo class
+        std::string userInput = server_info.name;
+        packet.length = static_cast<uint32_t>(userInput.length());
+        memcpy(packet.data, userInput.c_str(), userInput.length());
+
+        // Todo (@aveens13 | @kripesh101): sizeof(Packet) is overkill.
+        int byteCount = send(*tcpSocket, reinterpret_cast<const char*>(&packet), sizeof(Packet), 0);
+        if (byteCount == SOCKET_ERROR) {
+            std::cerr << "Error in sending data to server: " << WSAGetLastError() << std::endl;
+        }
+
+        // [Critical] Todo (@aveens13) - fix: client-side authentication???
+
+        // Receive password from the server
+        byteCount = recv(*tcpSocket, reinterpret_cast<char*>(&passwordPacket), sizeof(Packet), 0);
+        if (byteCount == SOCKET_ERROR) {
+            std::cerr << "Error in Receiving data to server: " << WSAGetLastError() << std::endl;
+        }
+        std::string password(passwordPacket.data, passwordPacket.data + passwordPacket.length);
+        
+        // Validate password regardless of what's received
+        
         std::cout << "[TCP] Client: connect() is OK!" << std::endl;
         std::cout << "[TCP] Client: Can Start Sending and receiving data" << std::endl;
     }
@@ -81,14 +109,15 @@ bool createSocket(ServerInfo& server_info, SOCKET* tcpSocket, SOCKET* udpSocket)
 }
 
 void ReceiveMessages(SOCKET clientSocket) {
-    char buffer[4096];
-    ZeroMemory(buffer, 4096);
+    Packet receivePacket;
     while (true) {
-        int bytesReceived = recv(clientSocket, buffer, sizeof(buffer), 0);
-        if (bytesReceived > 0) {
+        int bytesReceived = recv(clientSocket, reinterpret_cast<char*>(&receivePacket), sizeof(Packet), 0);
+        if (bytesReceived > 0 && receivePacket.packetType == PACKET_TYPE_STRING) {
+            // std::string str(receivePacket.data, receivePacket.data + receivePacket.length);
+            // std::cout << str << std::endl;
             g_mutex_lock(&mutex);
-            memcpy(data.buffer, buffer, bytesReceived);
-            data.bytes = bytesReceived;
+            memcpy(data.buffer, receivePacket.data, receivePacket.length);
+            data.bytes = receivePacket.length;
             g_mutex_unlock(&mutex);
             g_idle_add(update_textbuffer, NULL);
         } else if (bytesReceived == 0) {
@@ -174,9 +203,6 @@ void data_callback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uin
     if (iResult == SOCKET_ERROR) {
         printf("sendto() failed with error code : %d", WSAGetLastError());
     }
-
-    current_pkt_number++;
-    current_pkt_number++;
 
     current_pkt_number++;
 }
@@ -513,7 +539,18 @@ Gtk::Box* VoiceOpsWindow::top_bar() {
 void VoiceOpsWindow::on_send_button_clicked() {
     auto msg = chatInput->get_text();
     std::cout << "Send button clicked. Message: " << msg.c_str() << "\n";
-    send(clientTCPSocket, msg.c_str(), msg.bytes(), 0);
+
+    Packet packet;
+    packet.packetType = PACKET_TYPE_STRING;
+    packet.length = msg.bytes();
+    memcpy(packet.data, msg.c_str(), msg.bytes());
+
+    // Todo: @aveens13 | @kripesh101: sizeof(Packet) is overkill.
+    int byteCount = send(clientTCPSocket, reinterpret_cast<const char*>(&packet), sizeof(Packet), 0);
+    if (byteCount == SOCKET_ERROR) {
+        std::cout << "Error in sending data to server: " << WSAGetLastError() << std::endl;
+        return;
+    }
 
     chatHistory->place_cursor(chatHistory->end());
     chatHistory->insert_at_cursor("You: ");
