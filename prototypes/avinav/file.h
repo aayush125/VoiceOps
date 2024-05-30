@@ -18,6 +18,13 @@ struct Packet {
     char data[MAX_PACKET_SIZE];
 };
 
+struct AuthPacket {
+    char username[50];
+    char password[50];
+    uint32_t uLength;
+    uint32_t pLength;
+};
+
 std::vector<unsigned char> loadPicture(const std::string& fileName) {
     std::ifstream file(fileName, std::ios::binary | std::ios::ate);
     if (!file.is_open()) {

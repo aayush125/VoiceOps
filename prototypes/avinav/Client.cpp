@@ -87,7 +87,17 @@ void SendMessages(SOCKET clientSocket) {
 
 int main(int argc, char* argv[]) {
     SOCKET clientSocket;
+    AuthPacket auth;
     int port = 55555;
+    std::cout << "Username:";
+    std::string userInput;
+    std::getline(std::cin, userInput);
+    auth.uLength = static_cast<uint32_t>(userInput.length());
+    std::memcpy(auth.username, userInput.c_str(), userInput.length());
+    std::cout << "Password:";
+    std::getline(std::cin, userInput);
+    auth.pLength = static_cast<uint32_t>(userInput.length());
+    std::memcpy(auth.password, userInput.c_str(), userInput.length());
 
     //Loading the dll file
     WSADATA wsaData;
@@ -98,10 +108,7 @@ int main(int argc, char* argv[]) {
         std::cout << "The winsock dll not found!" << std::endl;
         return 0;
     }
-    else {
-        std::cout << "The winsock dll was found!" << std::endl;
-        std::cout << "Status: " << wsaData.szSystemStatus << std::endl;
-    }
+  
 
     //Setup Client Socket
     clientSocket = INVALID_SOCKET;
@@ -111,9 +118,7 @@ int main(int argc, char* argv[]) {
         WSACleanup();
         return 0;
     }
-    else {
-        std::cout << "Socket() is OK!" << std::endl;
-    }
+   
 
     //Connect to server and bind :: Fill in hint structure, which server to connect to
     sockaddr_in clientService;
@@ -125,37 +130,26 @@ int main(int argc, char* argv[]) {
         WSACleanup();
         return 0;
     }
-    else {
-        //Send the username to the server
-        Packet packet, passwordPacket;
-        packet.packetType = PACKET_TYPE_STRING;
-        std::cout << "Username:";
-        std::string userInput;
-        std::getline(std::cin, userInput);
-        packet.length = static_cast<uint32_t>(userInput.length());
-        std::memcpy(packet.data, userInput.c_str(), userInput.length());
-        int byteCount = send(clientSocket, reinterpret_cast<const char*>(&packet), sizeof(Packet), 0);
-        if (byteCount == SOCKET_ERROR) {
-            std::cerr << "Error in sending data to server: " << WSAGetLastError() << std::endl;
-        }
-        std::cout << "Password:";
-        std::getline(std::cin, userInput);
+    
+    //Send authentication packet
+    send(clientSocket, reinterpret_cast<const char*>(&auth) , sizeof(AuthPacket), 0);
 
-        //Receive password from the server
-        byteCount = recv(clientSocket, reinterpret_cast<char*>(&passwordPacket), sizeof(Packet), 0);
-        if (byteCount == SOCKET_ERROR) {
-            std::cerr << "Error in Receiving data to server: " << WSAGetLastError() << std::endl;
+    // Receive server response
+    char buffer[256];
+    int bytesReceived = recv(clientSocket, buffer, sizeof(buffer) - 1, 0);
+    if (bytesReceived > 0) {
+        buffer[bytesReceived] = '\0';
+        if (strcmp(buffer, "goodauth") == 0) {
+            std::cout << "Server response: " << buffer << std::endl;
         }
-        std::string password(passwordPacket.data, passwordPacket.data + passwordPacket.length);
-        if (std::strcmp(userInput.c_str(), password.c_str()) != 0) {
-            std::cout << "Incorrect password!" << std::endl;
+        else {
+            std::cout << "Incorrect Password" << std::endl;
+            closesocket(clientSocket);
             WSACleanup();
             return 0;
         }
-        std::cout << "Client: connect() is OK!" << std::endl;
-        std::cout << "Client: Can Start Sending and receiving data" << std::endl;
     }
-    
+
     //Create a thread for receiving messages from the server
     std::thread receiveThread(ReceiveMessages, clientSocket);	
     SendMessages(clientSocket);
