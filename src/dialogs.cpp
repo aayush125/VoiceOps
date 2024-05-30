@@ -26,6 +26,14 @@ AddServerDialog::AddServerDialog(Gtk::Window* window) {
     dialogBox->append(*mServerNameEntry);
     // get_content_area()->append(*mServerNameEntry);
 
+    mUserNameEntry = Gtk::make_managed<Gtk::Entry>();
+    mUserNameEntry->set_placeholder_text("Username for this server");
+    mUserNameEntry->set_margin_start(20);
+    mUserNameEntry->set_margin_end(20);
+    mUserNameEntry->set_margin_bottom(10);
+    mServerNameEntry->signal_changed().connect(sigc::mem_fun(*this, &AddServerDialog::on_entry_changed));
+    dialogBox->append(*mUserNameEntry);
+
     mServerURLEntry = Gtk::make_managed<Gtk::Entry>();
     mServerURLEntry->set_placeholder_text("Server URL");
     mServerURLEntry->set_margin_start(20);
@@ -65,6 +73,11 @@ void AddServerDialog::on_entry_changed() {
 const std::string& AddServerDialog::get_server_name() {
     mServerName = mServerNameEntry->get_text();
     return mServerName;
+}
+
+const std::string& AddServerDialog::get_server_username() {
+    mUserName = mUserNameEntry->get_text();
+    return mUserName;
 }
 
 

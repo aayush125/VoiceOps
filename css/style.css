@@ -80,7 +80,6 @@
      padding: 16px;
      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
      color: white;
-     max-width: 40%;
  }
 
  #content-box {
@@ -90,4 +89,37 @@
      margin-left: 16px;
      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
      color: white;
+ }
+
+ #chat-time-label,
+ #chat-selfname-label,
+ #chat-friendname-label {
+   padding: 2px 5px;
+   font-family: 'Courier New', Courier, monospace;
+   font-weight: bold;
+   border-radius: 3px;
+ }
+
+ #chat-time-label {
+  font-size: 14px;
+ }
+
+ #chat-selfname-label, #chat-friendname-label {
+  font-size: 18px;
+ }
+ 
+ #chat-selfname-label {
+   color: #00ff00;
+   background-color: #444444;
+ }
+ 
+ #chat-friendname-label {
+   color: #ff6600;
+   background-color: #444444;
+ }
+ 
+ #chat-msg-label {
+   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+   color: #e0e0e0;
+   font-size: 17px;
  }

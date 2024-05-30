@@ -20,7 +20,7 @@ class VoiceOpsWindow : public Gtk::Window {
         ~VoiceOpsWindow();
 
         // friend void ReceiveMessages(SOCKET& clientSocket, GMutex& mutex, DataStore& data, Gtk::Box* chatBox);
-        void add_new_message(const char* pMessage);
+        void add_new_message(const char* pMessage, std::string pUsername = "");
     
     protected:
         void on_add_button_clicked();
@@ -28,6 +28,7 @@ class VoiceOpsWindow : public Gtk::Window {
         void on_server_button_clicked(ServerCard& pServer);
         void on_send_button_clicked();
 
+        void scroll_to_latest_message();
         void server_list_panel();
         void server_content_panel(bool);
         Gtk::Box* top_bar();
@@ -47,7 +48,7 @@ class VoiceOpsWindow : public Gtk::Window {
         std::thread mListenThread;
     private:
         void setup_database();
-        void refresh_server_list(const std::string& pServerName, const std::string& pServerURL, const std::string& pServerPort);
+        void refresh_server_list(const std::string& pServerName, const std::string& pUsername, const std::string& pServerURL, const std::string& pServerPort);
 
-        void insert_server_to_database(const std::string& pName, const std::string& pURL, const std::string& pPort);
+        void insert_server_to_database(const std::string& pName, const std::string& pUsername, const std::string& pURL, const std::string& pPort);
 };

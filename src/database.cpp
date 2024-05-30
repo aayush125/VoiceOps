@@ -4,7 +4,7 @@
 
 void database_functions::retrieve_servers(sqlite3* pDBHandle, std::vector<ServerInfo>& pServer) {
     sqlite3_stmt* stmt;
-    std::string sql = "SELECT SERVER_NAME, SERVER_URL, SERVER_PORT FROM SERVER_LIST;";
+    std::string sql = "SELECT SERVER_NAME, SERVER_USERNAME, SERVER_URL, SERVER_PORT FROM SERVER_LIST;";
     int rc = sqlite3_prepare_v2(pDBHandle, sql.c_str(), -1, &stmt, nullptr);
     if (rc != SQLITE_OK) {
         std::cout << "SQLite error: " << sqlite3_errmsg(pDBHandle) << std::endl;
@@ -17,8 +17,9 @@ void database_functions::retrieve_servers(sqlite3* pDBHandle, std::vector<Server
     while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
         ServerInfo server;
         server.name = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
-        server.url = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
-        server.port = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
+        server.username = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+        server.url = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
+        server.port = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3));
         pServer.push_back(server);
     }
 

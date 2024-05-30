@@ -5,6 +5,7 @@
 
 struct ServerInfo {
     std::string name;
+    std::string username;
     std::string url;
     std::string port;
 };
