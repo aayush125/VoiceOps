@@ -14,3 +14,10 @@ struct Packet {
     uint32_t length;
     char data[MAX_PACKET_SIZE];
 };
+
+struct AuthPacket {
+    char username[50];
+    char password[50];
+    uint32_t uLength;
+    uint32_t pLength;
+};

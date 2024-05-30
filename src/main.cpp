@@ -14,9 +14,6 @@ int main(int argc, char* argv[]) {
     if (wsaerr != 0) {
         std::cout << "The winsock dll not found!" << std::endl;
         return 0;
-    } else {
-        std::cout << "The winsock dll was found!" << std::endl;
-        std::cout << "Status: " << wsaData.szSystemStatus << std::endl;
     }
 
     Glib::setenv("GSK_RENDERER", "cairo", false);

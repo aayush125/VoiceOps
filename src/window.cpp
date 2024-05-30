@@ -50,8 +50,6 @@ bool createSocket(ServerInfo& server_info, SOCKET* tcpSocket, SOCKET* udpSocket)
         std::cout << "[TCP] Error at Socket(): " << WSAGetLastError() << std::endl;
         closesocket(*tcpSocket);
         return false;
-    } else {
-        std::cout << "[TCP] Socket() is OK!" << std::endl;
     }
 
     // Connect to server and bind :: Fill in hint structure, which server to connect to
@@ -62,35 +60,34 @@ bool createSocket(ServerInfo& server_info, SOCKET* tcpSocket, SOCKET* udpSocket)
         std::cout << "[TCP] Client:connect()- Failed to connect." << std::endl;
         closesocket(*tcpSocket);
         return false;
-    } else {
-        // Send the username to the server
-        Packet packet, passwordPacket;
-        packet.packetType = PACKET_TYPE_STRING;
+    }
 
-        // Todo (@kripesh101 | @aayush125): add a proper username field to ServerInfo class
-        std::string userInput = server_info.name;
-        packet.length = static_cast<uint32_t>(userInput.length());
-        memcpy(packet.data, userInput.c_str(), userInput.length());
+    AuthPacket auth;
 
-        // Todo (@aveens13 | @kripesh101): sizeof(Packet) is overkill.
-        int byteCount = send(*tcpSocket, reinterpret_cast<const char*>(&packet), sizeof(Packet), 0);
-        if (byteCount == SOCKET_ERROR) {
-            std::cerr << "Error in sending data to server: " << WSAGetLastError() << std::endl;
+    // Todo (@kripesh101 | @aayush125): add a proper username field to ServerInfo class
+    std::string username = server_info.name;
+    auth.uLength = static_cast<uint32_t>(username.length());
+    memcpy(auth.username, username.c_str(), username.length());
+
+    std::string password = "password";
+    auth.pLength = static_cast<uint32_t>(password.length());
+    memcpy(auth.password, password.c_str(), password.length());
+
+    // Send authentication packet
+    send(*tcpSocket, reinterpret_cast<const char*>(&auth), sizeof(AuthPacket), 0);
+
+    // Receive server response
+    char buffer[256];
+    int bytesReceived = recv(*tcpSocket, buffer, sizeof(buffer) - 1, 0);
+    if (bytesReceived > 0) {
+        buffer[bytesReceived] = '\0';
+        if (strcmp(buffer, "goodauth") == 0) {
+            std::cout << "Server response: " << buffer << std::endl;
+        } else {
+            std::cout << "Incorrect Password" << std::endl;
+            closesocket(*tcpSocket);
+            return false;
         }
-
-        // [Critical] Todo (@aveens13) - fix: client-side authentication???
-
-        // Receive password from the server
-        byteCount = recv(*tcpSocket, reinterpret_cast<char*>(&passwordPacket), sizeof(Packet), 0);
-        if (byteCount == SOCKET_ERROR) {
-            std::cerr << "Error in Receiving data to server: " << WSAGetLastError() << std::endl;
-        }
-        std::string password(passwordPacket.data, passwordPacket.data + passwordPacket.length);
-        
-        // Validate password regardless of what's received
-        
-        std::cout << "[TCP] Client: connect() is OK!" << std::endl;
-        std::cout << "[TCP] Client: Can Start Sending and receiving data" << std::endl;
     }
 
     // UDP Socket

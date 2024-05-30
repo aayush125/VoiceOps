@@ -12,24 +12,11 @@
 #include "filefunction.h"
 #include "database.h"
 #include <server/voice_server.h>
+#include <common/text_packet.h>
 
 #define MAX_PACKET_SIZE 1500
 
 std::vector<data> databaseQuery;
-std::mutex masterMutex;
-unsigned int numThreads = std::thread::hardware_concurrency();
-
-enum PacketType {
-    PACKET_TYPE_STRING = 1,
-    PACKET_TYPE_TEXT = 2,
-    PACKET_TYPE_PICTURE = 3
-};
-
-struct Packet {
-    uint32_t packetType;
-    uint32_t length;
-    char data[MAX_PACKET_SIZE];
-};
 
 void receivePicture(SOCKET socket, Packet initialPacket) {
     std::vector<unsigned char> pictureData;
@@ -71,39 +58,23 @@ void receivePicture(SOCKET socket, Packet initialPacket) {
     }
 }
 
-bool handleNewConnection(SOCKET acceptSocket) {
-    Packet usernamePacket, challengePacket, welcomePacket, messagePacket;
-    // Receive username
-    int byteCount = recv(acceptSocket, reinterpret_cast<char*>(&usernamePacket), sizeof(usernamePacket), 0);
-    std::string str(usernamePacket.data, usernamePacket.data + usernamePacket.length);
-    std::cout << "Username of client is:" << str << std::endl;
+bool handleNewConnection(SOCKET clientSocket) {
+    // Receive authentication packet
+    AuthPacket authPacket;
 
-    // search for username in the database and if exists then send password over connection
-
-    challengePacket.packetType = PACKET_TYPE_STRING;
-    std::string challenge = "password";
-    challengePacket.length = static_cast<uint32_t>(challenge.length());
-    memcpy(challengePacket.data, challenge.c_str(), challenge.length());
-    send(acceptSocket, reinterpret_cast<char*>(&challengePacket), sizeof(Packet), 0);
-
-    std::string welcomeMsg = "Welcome to the Server!";
-    welcomePacket.packetType = PACKET_TYPE_STRING;
-    welcomePacket.length = static_cast<uint32_t>(welcomeMsg.length());
-    memcpy(welcomePacket.data, welcomeMsg.c_str(), welcomeMsg.length());
-    send(acceptSocket, reinterpret_cast<char*>(&welcomePacket), sizeof(Packet), 0);
-
-    // send the messages to client
-    messagePacket.packetType = PACKET_TYPE_STRING;
-    for (const auto& row : databaseQuery) {
-        std::ostringstream sendThis;
-        sendThis << row.sender << ": " << row.message /* << "\r\n" */;
-        std::string outMessage = sendThis.str();
-        messagePacket.length = static_cast<uint32_t>(outMessage.length());
-        memcpy(messagePacket.data, outMessage.c_str(), outMessage.length());
-        send(acceptSocket, reinterpret_cast<char*>(&messagePacket), sizeof(Packet), 0);
+    int byteCount = recv(clientSocket, reinterpret_cast<char*>(&authPacket), sizeof(AuthPacket), 0);
+    std::string password(authPacket.password, authPacket.password + authPacket.pLength);
+    std::cout << "The password i got is:" << password << std::endl;
+    if (byteCount <= 0) {
+        std::cerr << "Failed to receive authentication packet." << std::endl;
+        return false;
     }
 
-    return true;
+    if (strcmp(password.c_str(), "password") == 0) {
+        std::cout << "Passwords matched" << std::endl;
+        return true;
+    }
+    return false;
 }
 
 int main(int argc, char* argv[]) {
@@ -211,19 +182,25 @@ int main(int argc, char* argv[]) {
                 }
 
                 // Add the new connection to the list of connected Clients
-
-                std::thread clientHandleThread([&]() { // Capturing all external variables
-                    // Lambda function body
-                    if (handleNewConnection(acceptSocket)) {
-                        // If login is successful, add to the master set
-                        std::lock_guard<std::mutex> lock(masterMutex); // master is shared resource so accessing it using thread safety
-                        FD_SET(acceptSocket, &master);
+                if (handleNewConnection(acceptSocket)) {
+                    Packet messagePacket;
+                    const char* authSuccess = "goodauth";
+                    send(acceptSocket, authSuccess, strlen(authSuccess), 0);
+                    FD_SET(acceptSocket, &master);
+                    messagePacket.packetType = PACKET_TYPE_STRING;
+                    for (const auto& row : databaseQuery) {
+                        std::ostringstream sendThis;
+                        sendThis << row.sender << ": " << row.message /* << "\r\n" */;
+                        std::string outMessage = sendThis.str();
+                        messagePacket.length = static_cast<uint32_t>(outMessage.length());
+                        memcpy(messagePacket.data, outMessage.c_str(), outMessage.length());
+                        send(acceptSocket, reinterpret_cast<char*>(&messagePacket), sizeof(Packet), 0);
                     }
-
-                });
-
-                // Since server main loop need to continue watching other clients so detaching this thread from main thread
-                clientHandleThread.detach();
+                }
+                else {
+                    const char* authFailure = "badauth";
+                    send(acceptSocket, authFailure, strlen(authFailure), 0);
+                }
 
             } else {
                 // Accept a new message
