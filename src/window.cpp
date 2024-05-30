@@ -31,7 +31,7 @@ static SOCKET clientUDPSocket;
 static sockaddr_in server;
 
 gboolean update_textbuffer(void*) {
-    g_mutex_lock(&mutex);
+    // g_mutex_lock(&mutex);
     auto msg = std::string(data.buffer, data.bytes);
     g_mutex_unlock(&mutex);
     std::cout << "Incoming: " << msg.c_str() << std::endl; // .c_str seems to fix emoji crash
@@ -118,7 +118,7 @@ void ReceiveMessages(SOCKET clientSocket) {
             g_mutex_lock(&mutex);
             memcpy(data.buffer, receivePacket.data, receivePacket.length);
             data.bytes = receivePacket.length;
-            g_mutex_unlock(&mutex);
+            // g_mutex_unlock(&mutex);
             g_idle_add(update_textbuffer, NULL);
         } else if (bytesReceived == 0) {
             std::cout << "Connection closed by server." << std::endl;

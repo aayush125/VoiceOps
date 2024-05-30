@@ -96,7 +96,7 @@ bool handleNewConnection(SOCKET acceptSocket) {
     messagePacket.packetType = PACKET_TYPE_STRING;
     for (const auto& row : databaseQuery) {
         std::ostringstream sendThis;
-        sendThis << row.sender << ":" << row.message << "\r\n";
+        sendThis << row.sender << ": " << row.message /* << "\r\n" */;
         std::string outMessage = sendThis.str();
         messagePacket.length = static_cast<uint32_t>(outMessage.length());
         memcpy(messagePacket.data, outMessage.c_str(), outMessage.length());
@@ -164,7 +164,7 @@ int main(int argc, char* argv[]) {
     } else {
         std::cout << "Server Initialised, I am waiting Connections" << std::endl;
     }
-    
+
     // Voice Chat socket
     SOCKET voiceServerSocket = INVALID_SOCKET;
     voiceServerSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -176,7 +176,7 @@ int main(int argc, char* argv[]) {
 
     // Bind the UDP voice socket on the same port and ip as TCP socket
     if (bind(voiceServerSocket, (SOCKADDR*)&service, sizeof(service)) == SOCKET_ERROR) {
-        std::cout << "Bind() failed!" << WSAGetLastError()<< std::endl;
+        std::cout << "Bind() failed!" << WSAGetLastError() << std::endl;
         closesocket(serverSocket);
         WSACleanup();
         return 0;
@@ -235,7 +235,7 @@ int main(int argc, char* argv[]) {
                     // Broadcast the message to connected clients
                     std::ostringstream clientId;
                     std::string str(packet.data, packet.data + packet.length);
-                    clientId << "Client #" << sock;
+                    clientId << "Client #" << sock << ": ";
                     std::cout << clientId.str() << str << std::endl;
                     const int channelID = 1;
                     std::cout << str << std::endl;
@@ -245,7 +245,7 @@ int main(int argc, char* argv[]) {
                         SOCKET outSock = master.fd_array[j];
                         if (outSock != serverSocket && outSock != sock) {
                             std::ostringstream ss;
-                            ss << clientId.str() << str << "\r\n";
+                            ss << clientId.str() << str /* << "\r\n" */;
                             std::string strOut = ss.str();
                             Packet broadcastingPacket;
                             broadcastingPacket.packetType = packet.packetType;

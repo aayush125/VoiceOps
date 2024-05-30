@@ -37,7 +37,7 @@ static int callback(void* dataPtr, int argc, char** argv, char** azColName) {
         }
     }
     databaseContent->push_back(row);
-    std::cout << std::endl;
+    // std::cout << std::endl;
     return 0;
 }
 
