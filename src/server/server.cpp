@@ -235,7 +235,7 @@ int main(int argc, char* argv[]) {
                     // Broadcast the message to connected clients
                     std::ostringstream clientId;
                     std::string str(packet.data, packet.data + packet.length);
-                    clientId << "Client #" << sock << ": ";
+                    clientId << "Client #" << sock;
                     std::cout << clientId.str() << str << std::endl;
                     const int channelID = 1;
                     std::cout << str << std::endl;
@@ -245,7 +245,7 @@ int main(int argc, char* argv[]) {
                         SOCKET outSock = master.fd_array[j];
                         if (outSock != serverSocket && outSock != sock) {
                             std::ostringstream ss;
-                            ss << clientId.str() << str /* << "\r\n" */;
+                            ss << clientId.str() << ": " << str /* << "\r\n" */;
                             std::string strOut = ss.str();
                             Packet broadcastingPacket;
                             broadcastingPacket.packetType = packet.packetType;
