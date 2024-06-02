@@ -8,12 +8,15 @@
 #include <thread>
 #include <vector>
 #include <mutex>
+#include <map>
 #include <cstdint>
 #include "filefunction.h"
 #include "database.h"
 #define MAX_PACKET_SIZE 1500
 
 std::vector<data> databaseQuery;
+//Map socket to usernames
+std::map<SOCKET, std::string> clientUsernames;
 
 enum PacketType {
     PACKET_TYPE_STRING = 1,
@@ -77,13 +80,13 @@ void receivePicture(SOCKET socket, Packet initialPacket) {
     }
 }
 
-bool handleNewConnection(SOCKET clientSocket) {
+bool handleNewConnection(SOCKET clientSocket, std::string &username) {
     // Receive authentication packet
     AuthPacket authPacket;
 
     int byteCount = recv(clientSocket, reinterpret_cast<char*>(&authPacket), sizeof(AuthPacket), 0);
     std::string password(authPacket.password, authPacket.password + authPacket.pLength);
-    std::cout << "The password i got is:" << password << std::endl;
+    username = std::string(authPacket.username, authPacket.username + authPacket.uLength);
     if (byteCount <= 0) {
         std::cerr << "Failed to receive authentication packet." << std::endl;
         return false;
@@ -100,13 +103,14 @@ int main(int argc, char* argv[]) {
     SOCKET serverSocket, acceptSocket;
     int port = 55555;
     int MAXCONN = 30;
+    int queryMessagesLimit = 5;
     //Loading the database file
     std::string directoryDatabaseString = "C:\\Codes\\C++ Socket Connection - Server\\Database\\" + std::to_string(port) + ".db";
     const char* directoryDatabase = directoryDatabaseString.c_str();
 
     createDB(directoryDatabase);
     createTable(directoryDatabase);
-    databaseQuery = selectData(directoryDatabase);
+    databaseQuery = selectData(directoryDatabase,queryMessagesLimit);
     
     //Loading the dll file
     WSADATA wsaData;
@@ -152,8 +156,8 @@ int main(int argc, char* argv[]) {
     
 
     fd_set master;
-
     FD_ZERO(&master);
+
 
     FD_SET(serverSocket, &master);
 
@@ -177,13 +181,17 @@ int main(int argc, char* argv[]) {
                 else {
                     std::cout << "Accepted Connection" << std::endl;
                 }
-
+                
+                std::string username;
                 //Add the new connection to the list of connected Clients
-                if (handleNewConnection(acceptSocket)) {
+                if (handleNewConnection(acceptSocket, username)) {
                     Packet messagePacket;
                     const char* authSuccess = "goodauth";
                     send(acceptSocket, authSuccess, strlen(authSuccess), 0);
                     FD_SET(acceptSocket, &master);
+                    std::cout << "The username outside handleconnection is " << username << std::endl;
+                    clientUsernames[acceptSocket] = username; // Store the username
+
                     messagePacket.packetType = PACKET_TYPE_STRING;
                     for (const auto& row : databaseQuery) {
                         std::ostringstream sendThis;
@@ -209,19 +217,18 @@ int main(int argc, char* argv[]) {
                 
                 if (byteCount > 0 && packet.packetType == PACKET_TYPE_STRING) {
                     //Broadcast the message to connected clients
-                    std::ostringstream clientId;
+                    std::string username = clientUsernames[sock];
                     std::string str(packet.data, packet.data + packet.length);
-                    clientId << "Client #" << sock;
-                    std::cout << clientId.str()<< str << std::endl;
+                    std::cout << username<< str << std::endl;
                     const int channelID = 1;
                     std::cout << str << std::endl;
-                    insertData(directoryDatabase, clientId.str(), str, channelID);
+                    insertData(directoryDatabase, username, str, channelID);
 
                     for (int j = 0; j < master.fd_count; j++) {
                         SOCKET outSock = master.fd_array[j];
                         if (outSock != serverSocket && outSock != sock) {
                             std::ostringstream ss;
-                            ss <<clientId.str()<< ":" << str << "\r\n";
+                            ss <<username<< ":" << str << "\r\n";
                             std::string strOut = ss.str();
                             Packet broadcastingPacket;
                             broadcastingPacket.packetType = packet.packetType;
