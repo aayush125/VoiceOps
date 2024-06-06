@@ -13,6 +13,7 @@ struct ServerInfo {
 struct ServerCard {
     ServerInfo info;
     Gtk::Button* button;
+    std::string previousSender;
 };
 
 struct DataStore {

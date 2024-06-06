@@ -27,6 +27,9 @@ class VoiceOpsWindow : public Gtk::Window {
         void on_add_server_response(AddServerDialog& pDialog, int pResponseID);
         void on_server_button_clicked(ServerCard& pServer);
         void on_send_button_clicked();
+        void on_photo_button_clicked();
+        void on_photo_response(const Gtk::FileChooserNative& pFileChooser, int pResponseID);
+        bool on_hotkey_press(GdkKeyEvent* pKeyEvent);
 
         void scroll_to_latest_message();
         void server_list_panel();
@@ -43,6 +46,8 @@ class VoiceOpsWindow : public Gtk::Window {
         ServerCard* mSelectedServer;
         std::vector<ServerCard> mServerCards;
         std::vector<ServerInfo> mServers;
+
+        Glib::RefPtr<Gdk::Pixbuf> mScreenshotPixbuf;
 
         SOCKET mClientSocket;
         std::thread mListenThread;

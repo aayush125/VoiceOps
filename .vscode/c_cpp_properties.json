@@ -2,11 +2,13 @@
     "configurations": [
         {
             "name": "Win32",
+            "compilerPath": "C:/msys64/mingw64/bin/g++.exe",
             "includePath": [
                 "${workspaceFolder}\\**",
                 "C:\\msys64\\mingw64\\include\\**",
                 "C:\\msys64\\mingw64\\lib\\**",
-                "${workspaceFolder}/headers"
+                "${workspaceFolder}/headers",
+                "C:/msys64/mingw64/include"
             ]
         }
     ],

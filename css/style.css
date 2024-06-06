@@ -23,6 +23,19 @@
    padding: 10px 20px;
    transition: background-color 0.3s ease;
  }
+
+ #message-text-btn-box button {
+  background: transparent;
+  color: #fff;
+  padding: 8px;
+  margin: 5px;
+  border: none;
+ }
+
+ #message-text-btn-box button:hover {
+  background: #333;
+  color: #fff;
+ }
  
  #top-bar button:hover,
  #dialog-ok-button:hover,
@@ -32,6 +45,7 @@
  }
  
  #top-bar button:active,
+ #message-text-btn-box button:active,
  #dialog-ok-button:active,
  #dialog-ok-button:not(:disabled):active {
    background: #666;

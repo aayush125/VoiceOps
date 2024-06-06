@@ -128,6 +128,7 @@ void VoiceOpsWindow::server_list_panel() {
         ServerCard serverCard;
         serverCard.button = serverButton;
         serverCard.info = server;
+        serverCard.previousSender = "";
         mServerCards.push_back(serverCard);
     }
 
@@ -176,6 +177,7 @@ void VoiceOpsWindow::refresh_server_list(const std::string& pServerName, const s
     ServerCard newServerCard;
     newServerCard.button = serverButton;
     newServerCard.info = newServer;
+    newServerCard.previousSender = "";
     mServerCards.push_back(newServerCard);
     mServerCards.back().button->signal_clicked().connect(sigc::bind(sigc::mem_fun(*this, &VoiceOpsWindow::on_server_button_clicked),
         mServerCards.back()));
@@ -263,20 +265,75 @@ void VoiceOpsWindow::server_content_panel(bool pSelectedServer) {
     // innerWrap->append(*serverURL);
     // innerWrap->append(*serverPort);
 
-    auto textBox = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 5);
+    auto textBox = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 5);
+
+    auto textMessagePortion = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 5);
+    
     mMessageEntry = Gtk::make_managed<Gtk::Entry>();
     mMessageEntry->signal_activate().connect(sigc::mem_fun(*this, &VoiceOpsWindow::on_send_button_clicked));
+    
+    auto choosePhotoButton = Gtk::make_managed<Gtk::Button>();
+    auto image = Gtk::make_managed<Gtk::Image>("document-open");
+    choosePhotoButton->set_child(*image);
+    choosePhotoButton->signal_clicked().connect(sigc::mem_fun(*this, &VoiceOpsWindow::on_photo_button_clicked));
+    
     auto sendButton = Gtk::make_managed<Gtk::Button>("Send");
     sendButton->signal_clicked().connect(sigc::mem_fun(*this, &VoiceOpsWindow::on_send_button_clicked));
 
     mMessageEntry->set_hexpand(true);
     textBox->set_hexpand(true);
 
-    textBox->append(*mMessageEntry);
-    textBox->append(*sendButton);
+    auto fileNameLabel = Gtk::make_managed<Gtk::Label>();
+
+    textBox->append(*fileNameLabel);
+    
+    textMessagePortion->append(*mMessageEntry);
+    textMessagePortion->append(*choosePhotoButton);
+    textMessagePortion->append(*sendButton);
+
+    textBox->append(*textMessagePortion);
+
+    textBox->set_name("message-text-btn-box");
 
     innerWrap->append(*scrollWindow);
     innerWrap->append(*textBox);
+}
+
+void VoiceOpsWindow::on_photo_button_clicked() {
+    auto fileChooser = Gtk::FileChooserNative::create("Select an image", *this, Gtk::FileChooser::Action::OPEN);
+
+    auto imageFilter = Gtk::FileFilter::create();
+    imageFilter->set_name("Image Files");
+    // imageFilter->add_mime_type("image/jpeg");
+    // imageFilter->add_mime_type("image/png");
+    // imageFilter->add_mime_type("image/gif");
+    imageFilter->add_pattern("*.png");
+    imageFilter->add_pattern("*.jpg");
+    imageFilter->add_pattern("*.jpeg");
+
+    fileChooser->add_filter(imageFilter);
+
+
+    fileChooser->signal_response().connect([this, fileChooser](int response_id) {on_photo_response(*fileChooser, response_id);});
+    fileChooser->show();
+}
+
+void VoiceOpsWindow::on_photo_response(const Gtk::FileChooserNative& pFileChooser, int pResponseID) {
+    if (pResponseID == Gtk::ResponseType::ACCEPT) {
+        std::string filePath = pFileChooser.get_file()->get_path();
+        std::cout << filePath << '\n';
+
+        auto innerWrap = mServerContentBox->get_first_child();
+        auto textBox = innerWrap->get_last_child();
+
+        if (textBox) {
+            auto label = dynamic_cast<Gtk::Label*>(textBox->get_first_child());
+            if (label) label->set_text("Selected file: " + filePath.substr(filePath.find_last_of('\\') + 1, filePath.length()));
+            else std::cerr << "Error accessing label for the file name.\n";
+        } else {
+            std::cerr << "Error accessing parent of the label for the file name.\n";
+        }
+    }
 }
 
 void VoiceOpsWindow::scroll_to_latest_message() {
@@ -313,7 +370,7 @@ void VoiceOpsWindow::on_send_button_clicked() {
 
     if (message.empty() || message.find_first_not_of(' ') == std::string::npos) return;
 
-    add_new_message(message.c_str());
+    add_new_message(message.c_str(), mSelectedServer->info.username);
 
     scroll_to_latest_message();
 
@@ -333,10 +390,10 @@ void VoiceOpsWindow::add_new_message(const char* pMessage, std::string pUsername
     
     std::string timeString = "[" + std::to_string(now_tm->tm_hour) + ":" +
                                      std::to_string(now_tm->tm_min) +
-                                     "]"; // + (pSelf ? mSelectedServer->info.username : "Client Name");
+                                     "]";
     
-    std::string nameString = (pUsername == "") ? mSelectedServer->info.username : pUsername;
-    static std::string senderName = (pUsername == "") ? mSelectedServer->info.username : "";
+    std::string nameString = pUsername;
+    static std::string senderName = "";
     
     auto timeLabel = Gtk::make_managed<Gtk::Label>(timeString.c_str());
     timeLabel->set_selectable(true);
@@ -345,7 +402,7 @@ void VoiceOpsWindow::add_new_message(const char* pMessage, std::string pUsername
 
     auto nameLabel = Gtk::make_managed<Gtk::Label>(nameString.c_str());
     nameLabel->set_selectable(true);
-    (pUsername == "") ? nameLabel->set_name("chat-selfname-label") : nameLabel->set_name("chat-friendname-label");
+    (pUsername == mSelectedServer->info.username) ? nameLabel->set_name("chat-selfname-label") : nameLabel->set_name("chat-friendname-label");
     nameLabel->set_hexpand(true);
     nameLabel->set_halign(Gtk::Align::START);
 
@@ -358,12 +415,12 @@ void VoiceOpsWindow::add_new_message(const char* pMessage, std::string pUsername
     messageLabel->set_hexpand(true);
     messageLabel->set_halign(Gtk::Align::START);
     
-    if (senderName != pUsername) messageBox->append(*nameAndTimeLabel);
+    if (mSelectedServer->previousSender != pUsername) messageBox->append(*nameAndTimeLabel);
     messageBox->append(*messageLabel);
 
     mChatList->append(*messageBox);
 
-    senderName = pUsername;
+    mSelectedServer->previousSender = pUsername;
 }
 
 void VoiceOpsWindow::on_add_button_clicked() {
