@@ -6,6 +6,6 @@
 #include "Window.hpp"
 #include <ws2tcpip.h>
 
-SOCKET createSocket(ServerInfo &server_info);
+bool createSocket(ServerInfo& server_info, SOCKET* tcpSocket, SOCKET* udpSocket);
 
-void ReceiveMessages(SOCKET& clientSocket, GMutex& mutex, DataStore& data, VoiceOpsWindow& windowref);
+void ReceiveMessages(SOCKET clientSocket, GMutex& mutex, DataStore& data, VoiceOpsWindow& windowref);

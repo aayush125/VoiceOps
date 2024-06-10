@@ -1,33 +1,76 @@
 #include "Networking.hpp"
 #include "Window.hpp"
+#include "common/text_packet.h"
 
-SOCKET createSocket(ServerInfo &server_info) {
-    SOCKET clientSocket;
+extern sockaddr_in server;
 
-    clientSocket = INVALID_SOCKET;
-    clientSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (clientSocket == INVALID_SOCKET) {
-        std::cout << "Error at Socket(): " << WSAGetLastError() << '\n';
-        WSACleanup();
-        return 0;
-    } else {
-        std::cout << "Socket() is OK!\n";
+bool createSocket(ServerInfo& server_info, SOCKET* tcpSocket, SOCKET* udpSocket) {
+
+    // Setup Client Socket
+    *tcpSocket = INVALID_SOCKET;
+    *tcpSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (*tcpSocket == INVALID_SOCKET) {
+        std::cout << "[TCP] Error at Socket(): " << WSAGetLastError() << std::endl;
+        closesocket(*tcpSocket);
+        return false;
     }
 
-    sockaddr_in clientService;
-    clientService.sin_family = AF_INET;
-    clientService.sin_port = htons(static_cast<u_short>(std::stoul(server_info.port)));
-    InetPton(AF_INET, server_info.url.c_str(), &clientService.sin_addr.s_addr);
-    std::cout << "Connecting to URL: " + server_info.url + " | Port: " + server_info.port << '\n';
-    if (connect(clientSocket, (SOCKADDR*)&clientService, sizeof(clientService)) == SOCKET_ERROR) {
-        std::cout << "Client:connect() - Failed to connect: " << WSAGetLastError() << '\n';
-        return 0;
-    } else {
-        std::cout << "Client: connect() is OK!\n";
-        std::cout << "Client: Can Start Sending and receiving data\n";
+    // Connect to server and bind :: Fill in hint structure, which server to connect to
+    server.sin_family = AF_INET;
+    server.sin_port = htons(static_cast<u_short>(std::stoul(server_info.port)));
+    InetPton(AF_INET, server_info.url.c_str(), &server.sin_addr.s_addr);
+    if (connect(*tcpSocket, (SOCKADDR*)&server, sizeof(server)) == SOCKET_ERROR) {
+        std::cout << "[TCP] Client:connect()- Failed to connect." << std::endl;
+        closesocket(*tcpSocket);
+        return false;
     }
 
-    return clientSocket;
+    AuthPacket auth;
+
+    std::string username = server_info.username;
+    auth.uLength = static_cast<uint32_t>(username.length());
+    memcpy(auth.username, username.c_str(), username.length());
+
+    std::string password = "password";
+    auth.pLength = static_cast<uint32_t>(password.length());
+    memcpy(auth.password, password.c_str(), password.length());
+
+    // Send authentication packet
+    send(*tcpSocket, reinterpret_cast<const char*>(&auth), sizeof(AuthPacket), 0);
+
+    // Receive server response
+    char buffer[256];
+    int bytesReceived = recv(*tcpSocket, buffer, sizeof(buffer) - 1, 0);
+    if (bytesReceived > 0) {
+        buffer[bytesReceived] = '\0';
+        if (strcmp(buffer, "goodauth") == 0) {
+            std::cout << "Server response: " << buffer << std::endl;
+        } else {
+            std::cout << "Incorrect Password" << std::endl;
+            closesocket(*tcpSocket);
+            return false;
+        }
+    }
+
+    // UDP Socket
+    *udpSocket = INVALID_SOCKET;
+    *udpSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    if (*udpSocket == INVALID_SOCKET) {
+        closesocket(*tcpSocket);
+        closesocket(*udpSocket);
+        std::cout << "[UDP] Error at Socket(): " << WSAGetLastError() << std::endl;
+        return false;
+    } else {
+        std::cout << "[UDP] Socket() is OK!" << std::endl;
+    }
+
+    if (connect(*udpSocket, (SOCKADDR*)&server, sizeof(server)) == SOCKET_ERROR) {
+        std::cout << "[UDP] Client:connect()- Failed to connect." << std::endl;
+        closesocket(*udpSocket);
+        return false;
+    }    
+
+    return true;
 }
 
 static gboolean idle_callback(gpointer user_data) {
@@ -41,29 +84,26 @@ static gboolean idle_callback(gpointer user_data) {
     return G_SOURCE_REMOVE;
 }
 
-void ReceiveMessages(SOCKET& clientSocket, GMutex& mutex, DataStore& data, VoiceOpsWindow& windowref) {
-    char buffer[4096];
-    ZeroMemory(buffer, 4096);
-
+void ReceiveMessages(SOCKET clientSocket, GMutex& mutex, DataStore& data, VoiceOpsWindow& windowref) {
+    Packet receivePacket;
     while (true) {
-        int bytesReceived = recv(clientSocket, buffer, sizeof(buffer), 0);
-        if (bytesReceived > 0) {
-            // buffer[bytesReceived] = '\0';
-
+        int bytesReceived = recv(clientSocket, reinterpret_cast<char*>(&receivePacket), sizeof(Packet), 0);
+        if (bytesReceived > 0 && receivePacket.packetType == PACKET_TYPE_STRING) {
             g_mutex_lock(&mutex);
-            memcpy(data.buffer, buffer, bytesReceived);
-            std::cout << "Received message: " << buffer << '\n';
             // Appending message to the chat box
-            data.bytes = bytesReceived;
+            std::string str(receivePacket.data, receivePacket.length);
+            
             g_mutex_unlock(&mutex);
 
-            auto* user_data = new std::pair<VoiceOpsWindow&, std::string>(windowref, std::string(buffer, bytesReceived));
+            std::cout << "Received message: " << str << '\n';
+
+            auto* user_data = new std::pair<VoiceOpsWindow&, std::string>(windowref, str);
             g_idle_add(idle_callback, user_data);
         } else if (bytesReceived == 0) {
-            std::cout << "Connection closed by server.\n";
+            std::cout << "Connection closed by server." << std::endl;
             break;
         } else {
-            std::cerr << "Error in receiving data from server: " << WSAGetLastError() << '\n';
+            std::cerr << "Error in receiving data from server: " << WSAGetLastError() << std::endl;
             break;
         }
     }

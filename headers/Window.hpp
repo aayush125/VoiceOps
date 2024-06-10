@@ -3,8 +3,6 @@
 #include <gtkmm.h>
 #include <sqlite3.h>
 #include <thread>
-#include <mutex>
-#include <condition_variable>
 
 #define NOGDI
 #include <winsock2.h>
@@ -13,8 +11,6 @@
 #include "Database.hpp"
 #include "Dialogs.hpp"
 #include "Utils.hpp"
-
-gboolean update_textbuffer(void*);
 
 class VoiceOpsWindow : public Gtk::Window {
     public:
@@ -53,8 +49,15 @@ class VoiceOpsWindow : public Gtk::Window {
 
         Glib::RefPtr<Gdk::Pixbuf> mScreenshotPixbuf;
 
-        SOCKET mClientSocket;
         std::thread mListenThread;
+        
+        // SOCKET mclientUDPSocket;
+        SOCKET mClientTCPSocket;
+
+        std::thread mListenThreadTCP;
+        std::thread mListenThreadUDP;
+
+        bool voiceConnected = false;
     private:
 
         std::thread mHKThread;
