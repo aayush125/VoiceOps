@@ -84,11 +84,11 @@ static int insertData(const char* databasePath, std::string clientID, std::strin
     return 0;
 }
 
-static std::vector<data> selectData(const char* databasePath) {
+static std::vector<data> selectData(const char* databasePath, int queryLimit) {
     sqlite3* DB;
     int exit = sqlite3_open(databasePath, &DB);
     std::vector<data> databaseContent;
-    std::string sql = "SELECT * FROM MESSAGES";
+    std::string sql = "SELECT * FROM MESSAGES ORDER BY ID DESC LIMIT " + std::to_string(queryLimit);
     sqlite3_exec(DB, sql.c_str(), callback, &databaseContent, NULL);
     return databaseContent;
 }
