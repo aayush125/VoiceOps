@@ -3,9 +3,12 @@
 #include <gtkmm.h>
 #include <sqlite3.h>
 #include <thread>
+#include <mutex>
+#include <condition_variable>
 
 #define NOGDI
 #include <winsock2.h>
+#include <windows.h>
 
 #include "Database.hpp"
 #include "Dialogs.hpp"
@@ -30,6 +33,7 @@ class VoiceOpsWindow : public Gtk::Window {
         void on_photo_button_clicked();
         void on_photo_response(const Gtk::FileChooserNative& pFileChooser, int pResponseID);
         bool on_hotkey_press(GdkKeyEvent* pKeyEvent);
+        void on_voice_join();
 
         void scroll_to_latest_message();
         void server_list_panel();
@@ -52,6 +56,9 @@ class VoiceOpsWindow : public Gtk::Window {
         SOCKET mClientSocket;
         std::thread mListenThread;
     private:
+
+        std::thread mHKThread;
+
         void setup_database();
         void refresh_server_list(const std::string& pServerName, const std::string& pUsername, const std::string& pServerURL, const std::string& pServerPort);
 

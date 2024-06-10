@@ -6,6 +6,33 @@
 
 #include <fstream>
 
+// bool register_hotkey() {
+//     std::cout << "Register hotkey\n";
+//     return RegisterHotKey(NULL, HOTKEY_ID, MOD_CONTROL, 'M');
+// }
+
+// void unregister_hotkey() {
+//     std::cout << "Unregister hotkey\n";
+//     UnregisterHotKey(NULL, HOTKEY_ID);
+// }
+
+// bool process_windows_messages() {
+//     static bool registered = false;
+//     if (!registered) {
+//         register_hotkey();
+//         registered = true;
+//     }
+
+//     MSG msg;
+//     while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
+//         if (msg.message == WM_HOTKEY && msg.wParam == HOTKEY_ID) {
+//             std::cout << "Hotkey pressed" << std::endl;
+//         }
+//     }
+
+//     return true;
+// }
+
 int main(int argc, char *argv[])
 {
     // Loading the dll file
@@ -29,6 +56,8 @@ int main(int argc, char *argv[])
 
     auto app = Gtk::Application::create("org.voiceops.examples.base");
 
+    // Glib::signal_idle().connect(sigc::ptr_fun(&process_windows_messages));
+
     auto cssProvider = Gtk::CssProvider::create();
     std::ifstream cssFile("./css/style.css");
     std::string cssData((std::istreambuf_iterator<char>(cssFile)), std::istreambuf_iterator<char>());
@@ -40,5 +69,6 @@ int main(int argc, char *argv[])
 
     return app->make_window_and_run<VoiceOpsWindow>(argc, argv);
 
+    // unregister_hotkey();
     WSACleanup();
 }

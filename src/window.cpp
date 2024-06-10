@@ -19,9 +19,41 @@ gboolean update_textbuffer(void*) {
     return G_SOURCE_REMOVE;
 }
 
+static gboolean testhotkey(void*) {
+    auto dialog = Gtk::AlertDialog::create("Failed to connect to server.");
+    dialog->show();
+
+    return G_SOURCE_REMOVE;
+}
+
+void handleHotkeys() {
+    static bool registered = false;
+    if (!registered) {
+        if (!RegisterHotKey(NULL, 1, MOD_CONTROL, VK_SNAPSHOT)) {
+            std::cout << "Error!\n";
+        }
+
+        registered = true;
+    }
+
+    MSG msg;
+    while (GetMessage(&msg, NULL, 0, 0) != 0) {
+        if (msg.message == WM_HOTKEY) {
+            std::cout << "Hotkey received\n";
+            g_idle_add(testhotkey, NULL);
+        }
+    } 
+}
+
 VoiceOpsWindow::VoiceOpsWindow() {
     set_title("VoiceOps");
     set_name("main-window");
+
+    if (mHKThread.joinable()) {
+        mHKThread.join();
+    }
+
+    mHKThread = std::thread(&handleHotkeys);
 
     int rc;
 
@@ -238,7 +270,7 @@ void VoiceOpsWindow::server_content_panel(bool pSelectedServer) {
     auto messageBox = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 5);
 
     auto nameLabel = Gtk::make_managed<Gtk::Label>("Test Name");
-    nameLabel->set_selectable(true);\
+    nameLabel->set_selectable(true);
     nameLabel->set_name("chat-name-label");
     nameLabel->set_hexpand(true);
     nameLabel->set_halign(Gtk::Align::START);
@@ -268,6 +300,12 @@ void VoiceOpsWindow::server_content_panel(bool pSelectedServer) {
     auto textBox = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 5);
 
     auto textMessagePortion = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 5);
+
+    auto voiceCallButton = Gtk::make_managed<Gtk::Button>();
+    auto pixbuf = Gdk::Pixbuf::create_from_file("./css/mic.png");
+    auto voiceImage = Gtk::make_managed<Gtk::Image>(pixbuf);
+    voiceCallButton->set_child(*voiceImage);
+    voiceCallButton->signal_clicked().connect(sigc::mem_fun(*this, &VoiceOpsWindow::on_voice_join));
     
     mMessageEntry = Gtk::make_managed<Gtk::Entry>();
     mMessageEntry->signal_activate().connect(sigc::mem_fun(*this, &VoiceOpsWindow::on_send_button_clicked));
@@ -287,6 +325,7 @@ void VoiceOpsWindow::server_content_panel(bool pSelectedServer) {
 
     textBox->append(*fileNameLabel);
     
+    textMessagePortion->append(*voiceCallButton);
     textMessagePortion->append(*mMessageEntry);
     textMessagePortion->append(*choosePhotoButton);
     textMessagePortion->append(*sendButton);
@@ -299,14 +338,15 @@ void VoiceOpsWindow::server_content_panel(bool pSelectedServer) {
     innerWrap->append(*textBox);
 }
 
+void VoiceOpsWindow::on_voice_join() {
+    std::cout << "Voice joined!\n";
+}
+
 void VoiceOpsWindow::on_photo_button_clicked() {
     auto fileChooser = Gtk::FileChooserNative::create("Select an image", *this, Gtk::FileChooser::Action::OPEN);
 
     auto imageFilter = Gtk::FileFilter::create();
     imageFilter->set_name("Image Files");
-    // imageFilter->add_mime_type("image/jpeg");
-    // imageFilter->add_mime_type("image/png");
-    // imageFilter->add_mime_type("image/gif");
     imageFilter->add_pattern("*.png");
     imageFilter->add_pattern("*.jpg");
     imageFilter->add_pattern("*.jpeg");
