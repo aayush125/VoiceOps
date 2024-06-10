@@ -6,33 +6,6 @@
 
 #include <fstream>
 
-// bool register_hotkey() {
-//     std::cout << "Register hotkey\n";
-//     return RegisterHotKey(NULL, HOTKEY_ID, MOD_CONTROL, 'M');
-// }
-
-// void unregister_hotkey() {
-//     std::cout << "Unregister hotkey\n";
-//     UnregisterHotKey(NULL, HOTKEY_ID);
-// }
-
-// bool process_windows_messages() {
-//     static bool registered = false;
-//     if (!registered) {
-//         register_hotkey();
-//         registered = true;
-//     }
-
-//     MSG msg;
-//     while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
-//         if (msg.message == WM_HOTKEY && msg.wParam == HOTKEY_ID) {
-//             std::cout << "Hotkey pressed" << std::endl;
-//         }
-//     }
-
-//     return true;
-// }
-
 int main(int argc, char *argv[])
 {
     // Loading the dll file
