@@ -2,9 +2,8 @@
 #include "Window.hpp"
 #include "common/text_packet.h"
 
-extern sockaddr_in server;
-
 bool createSocket(ServerInfo& server_info, SOCKET* tcpSocket, SOCKET* udpSocket) {
+    sockaddr_in server;
 
     // Setup Client Socket
     *tcpSocket = INVALID_SOCKET;

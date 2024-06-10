@@ -51,11 +51,10 @@ class VoiceOpsWindow : public Gtk::Window {
 
         std::thread mListenThread;
         
-        // SOCKET mclientUDPSocket;
+        SOCKET mClientUDPSocket;
         SOCKET mClientTCPSocket;
 
         std::thread mListenThreadTCP;
-        std::thread mListenThreadUDP;
 
         bool voiceConnected = false;
     private:
