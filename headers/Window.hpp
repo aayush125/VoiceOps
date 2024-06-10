@@ -21,6 +21,7 @@ class VoiceOpsWindow : public Gtk::Window {
         void on_add_server_response(AddServerDialog& pDialog, int pResponseID);
         void on_server_button_clicked(ServerCard& pServer);
         void on_send_button_clicked();
+        void on_voice_button_clicked();
 
         void server_list_panel();
         void server_content_panel(bool);
@@ -43,7 +44,8 @@ class VoiceOpsWindow : public Gtk::Window {
 
         std::thread listenThreadTCP;
         std::thread listenThreadUDP;
-        
+
+        bool voiceConnected = false;
     private:
         void setup_database();
         void refresh_server_list(const std::string& pServerName, const std::string& pServerURL, const std::string& pServerPort);

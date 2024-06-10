@@ -30,7 +30,9 @@ int main(int argc, char* argv[]) {
 
     Gtk::StyleContext::add_provider_for_display(screen, cssProvider, GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
 
-    return app->make_window_and_run<VoiceOpsWindow>(argc, argv);
+    int ret = app->make_window_and_run<VoiceOpsWindow>(argc, argv);
 
     WSACleanup();
+
+    return ret;
 }

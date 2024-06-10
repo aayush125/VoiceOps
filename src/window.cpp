@@ -102,6 +102,12 @@ bool createSocket(ServerInfo& server_info, SOCKET* tcpSocket, SOCKET* udpSocket)
         std::cout << "[UDP] Socket() is OK!" << std::endl;
     }
 
+    if (connect(*udpSocket, (SOCKADDR*)&server, sizeof(server)) == SOCKET_ERROR) {
+        std::cout << "[UDP] Client:connect()- Failed to connect." << std::endl;
+        closesocket(*udpSocket);
+        return false;
+    }    
+
     return true;
 }
 
@@ -196,7 +202,7 @@ void data_callback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uin
 
     int len = opus_encode(enc, (const opus_int16*)pInput, frameCount, outgoing_pkt.encoded_data, 400);
 
-    int iResult = sendto(clientUDPSocket, (const char*)&outgoing_pkt, len + 4, 0, (SOCKADDR*)&server, sizeof(server));
+    int iResult = send(clientUDPSocket, (const char*)&outgoing_pkt, len + 4, 0);
     if (iResult == SOCKET_ERROR) {
         printf("sendto() failed with error code : %d", WSAGetLastError());
     }
@@ -225,7 +231,7 @@ void ReceiveVoice(SOCKET voiceSocket) {
         return;
     }
 
-    ma_device_start(&device);
+    // ma_device_start(&device);
 
     while (true) {
         int recv_len = recv(voiceSocket, (char*)&incoming_pkt, sizeof(VoicePacketFromServer), 0);
@@ -516,6 +522,11 @@ void VoiceOpsWindow::server_content_panel(bool pSelectedServer) {
     send_button->signal_clicked().connect(sigc::mem_fun(*this, &VoiceOpsWindow::on_send_button_clicked));
     send_button->set_margin(5);
     innerWrap->append(*send_button);
+
+    auto voice_button = Gtk::make_managed<Gtk::Button>("Toggle Voice");
+    voice_button->signal_clicked().connect(sigc::mem_fun(*this, &VoiceOpsWindow::on_voice_button_clicked));
+    voice_button->set_margin(5);
+    innerWrap->append(*voice_button);
 }
 
 Gtk::Box* VoiceOpsWindow::top_bar() {
@@ -556,6 +567,16 @@ void VoiceOpsWindow::on_send_button_clicked() {
 
     chatInput->set_text("");
     chatInput->grab_focus();
+}
+
+void VoiceOpsWindow::on_voice_button_clicked() {
+    if (voiceConnected) {
+        ma_device_stop(&device);
+        voiceConnected = false;
+    } else {
+        ma_device_start(&device);
+        voiceConnected = true;
+    }
 }
 
 void VoiceOpsWindow::on_add_button_clicked() {

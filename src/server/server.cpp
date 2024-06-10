@@ -208,7 +208,18 @@ int main(int argc, char* argv[]) {
                 int byteCount = 0;
                 byteCount = recv(sock, reinterpret_cast<char*>(&packet), sizeof(Packet), 0);
 
-                if (byteCount > 0 && packet.packetType == PACKET_TYPE_STRING) {
+                if (byteCount <= 0) {
+                    if (byteCount == 0) {
+                        std::cout << "Client #" << sock << " disconnected." << std::endl;
+                    } else {
+                        std::cout << "Error with Client #" << sock << ": " << WSAGetLastError() << std::endl;
+                    }
+                    closesocket(sock);
+                    FD_CLR(sock, &master);
+                    continue;
+                }
+
+                if (packet.packetType == PACKET_TYPE_STRING) {
                     // Broadcast the message to connected clients
                     std::ostringstream clientId;
                     std::string str(packet.data, packet.data + packet.length);
@@ -234,9 +245,8 @@ int main(int argc, char* argv[]) {
 
                 } else if (packet.packetType == PACKET_TYPE_PICTURE) {
                     receivePicture(sock, packet);
-                } else {
-                    closesocket(sock);
-                    FD_CLR(sock, &master);
+                } else if (packet.packetType == PACKET_TYPE_VOICE_JOIN) {
+                    // add user to voice
                 }
             }
         }
