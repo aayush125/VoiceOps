@@ -14,15 +14,31 @@ bool createSocket(ServerInfo& server_info, SOCKET* tcpSocket, SOCKET* udpSocket)
         return false;
     }
 
+    u_long mode = 1;
+    ioctlsocket(*tcpSocket, FIONBIO, &mode);
+
+    fd_set master;
+    FD_ZERO(&master);
+    FD_SET(*tcpSocket, &master);
+
     // Connect to server and bind :: Fill in hint structure, which server to connect to
     server.sin_family = AF_INET;
     server.sin_port = htons(static_cast<u_short>(std::stoul(server_info.port)));
     InetPton(AF_INET, server_info.url.c_str(), &server.sin_addr.s_addr);
     if (connect(*tcpSocket, (SOCKADDR*)&server, sizeof(server)) == SOCKET_ERROR) {
-        std::cout << "[TCP] Client:connect()- Failed to connect." << std::endl;
-        closesocket(*tcpSocket);
-        return false;
+        if (WSAGetLastError() != WSAEWOULDBLOCK) {
+            std::cout << "[TCP] Client:connect()- Failed to connect. Error: " << WSAGetLastError() << std::endl;
+            closesocket(*tcpSocket);
+            return false;
+        }
     }
+
+    TIMEVAL timeout = {2, 0};
+    select(0, nullptr, &master, nullptr, &timeout);
+    FD_CLR(*tcpSocket, &master);
+
+    mode = 0;
+    ioctlsocket(*tcpSocket, FIONBIO, &mode);
 
     AuthPacket auth;
 
@@ -35,7 +51,13 @@ bool createSocket(ServerInfo& server_info, SOCKET* tcpSocket, SOCKET* udpSocket)
     memcpy(auth.password, password.c_str(), password.length());
 
     // Send authentication packet
-    send(*tcpSocket, reinterpret_cast<const char*>(&auth), sizeof(AuthPacket), 0);
+    int bytes = send(*tcpSocket, reinterpret_cast<const char*>(&auth), sizeof(AuthPacket), 0);
+    if (bytes <= 0) {
+        std::cout << "[TCP] send() - Error: " << WSAGetLastError() << std::endl;
+        closesocket(*tcpSocket);
+        return false;
+    }
+
 
     // Receive server response
     char buffer[256];
@@ -73,11 +95,12 @@ bool createSocket(ServerInfo& server_info, SOCKET* tcpSocket, SOCKET* udpSocket)
 }
 
 static gboolean idle_callback(gpointer user_data) {
-    auto data = static_cast<std::pair<VoiceOpsWindow&, std::string>*>(user_data);
-    VoiceOpsWindow& windowref = data->first;
-    std::string message = data->second;
+    auto data = static_cast<std::tuple<VoiceOpsWindow&, std::string, std::string>*>(user_data);
+    VoiceOpsWindow& windowref = std::get<0>(*data);
+    std::string message = std::get<1>(*data);
+    std::string username = std::get<2>(*data);
 
-    windowref.add_new_message(message.c_str(), "Client Name");
+    windowref.add_new_message(message.c_str(), username);
 
     delete data;
     return G_SOURCE_REMOVE;
@@ -87,16 +110,17 @@ void ReceiveMessages(SOCKET clientSocket, GMutex& mutex, DataStore& data, VoiceO
     Packet receivePacket;
     while (true) {
         int bytesReceived = recv(clientSocket, reinterpret_cast<char*>(&receivePacket), sizeof(Packet), 0);
-        if (bytesReceived > 0 && receivePacket.packetType == PACKET_TYPE_STRING) {
-            g_mutex_lock(&mutex);
+        if (bytesReceived > 0 && receivePacket.packetType == PACKET_TYPE_MSG_FROM_SERVER) {
+            // g_mutex_lock(&mutex);
             // Appending message to the chat box
-            std::string str(receivePacket.data, receivePacket.length);
+            std::string str(receivePacket.data.message_from_server.text, receivePacket.length);
+            std::string username(receivePacket.data.message_from_server.username);
             
-            g_mutex_unlock(&mutex);
+            // g_mutex_unlock(&mutex);
 
             std::cout << "Received message: " << str << '\n';
 
-            auto* user_data = new std::pair<VoiceOpsWindow&, std::string>(windowref, str);
+            auto* user_data = new std::tuple<VoiceOpsWindow&, std::string, std::string>(windowref, str, username);
             g_idle_add(idle_callback, user_data);
         } else if (bytesReceived == 0) {
             std::cout << "Connection closed by server." << std::endl;

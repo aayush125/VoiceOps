@@ -423,9 +423,9 @@ void VoiceOpsWindow::on_send_button_clicked() {
     std::cout << "Send button clicked. Message: " << message.c_str() << "\n";
 
     Packet packet;
-    packet.packetType = PACKET_TYPE_STRING;
+    packet.packetType = PACKET_TYPE_MSG_TO_SERVER;
     packet.length = message.bytes();
-    memcpy(packet.data, message.c_str(), message.bytes());
+    memcpy(packet.data.message_to_server, message.c_str(), message.bytes());
 
     // Todo: @aveens13 | @kripesh101: sizeof(Packet) is overkill.
     int byteCount = send(mClientTCPSocket, reinterpret_cast<const char*>(&packet), sizeof(Packet), 0);

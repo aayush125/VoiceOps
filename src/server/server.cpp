@@ -23,7 +23,7 @@ std::map<SOCKET, std::string> clientUsernames;
 
 void receivePicture(SOCKET socket, Packet initialPacket) {
     std::vector<unsigned char> pictureData;
-    pictureData.insert(pictureData.end(), initialPacket.data, initialPacket.data + initialPacket.length);
+    pictureData.insert(pictureData.end(), initialPacket.data.bytes, initialPacket.data.bytes + initialPacket.length);
     uint32_t expectedPacketType = PACKET_TYPE_PICTURE;
 
     while (true) {
@@ -39,7 +39,7 @@ void receivePicture(SOCKET socket, Packet initialPacket) {
             break;
         }
 
-        pictureData.insert(pictureData.end(), packet.data, packet.data + packet.length);
+        pictureData.insert(pictureData.end(), packet.data.bytes, packet.data.bytes + packet.length);
 
         if (packet.length < MAX_PACKET_SIZE) {
             // Last packet received, stop receiving
@@ -194,13 +194,13 @@ int main(int argc, char* argv[]) {
                     std::cout << "The username outside handleconnection is " << username << std::endl;
                     clientUsernames[acceptSocket] = username; // Store the username
 
-                    messagePacket.packetType = PACKET_TYPE_STRING;
+                    messagePacket.packetType = PACKET_TYPE_MSG_FROM_SERVER;
                     for (const auto& row : databaseQuery) {
-                        std::ostringstream sendThis;
-                        sendThis << row.sender << ": " << row.message /* << "\r\n" */;
-                        std::string outMessage = sendThis.str();
-                        messagePacket.length = static_cast<uint32_t>(outMessage.length());
-                        memcpy(messagePacket.data, outMessage.c_str(), outMessage.length());
+                        messagePacket.length = static_cast<uint32_t>(row.message.length());
+                        memcpy(messagePacket.data.message_from_server.text, row.message.c_str(), row.message.length());
+                        memset(messagePacket.data.message_from_server.username, 0, 50);
+                        memcpy(messagePacket.data.message_from_server.username, row.sender.c_str(), row.sender.length());
+
                         send(acceptSocket, reinterpret_cast<char*>(&messagePacket), sizeof(Packet), 0);
                     }
                 }
@@ -226,24 +226,24 @@ int main(int argc, char* argv[]) {
                     continue;
                 }
 
-                if (packet.packetType == PACKET_TYPE_STRING) {
+                if (packet.packetType == PACKET_TYPE_MSG_TO_SERVER) {
                     // Broadcast the message to connected clients
                     std::string username = clientUsernames[sock];
-                    std::string str(packet.data, packet.data + packet.length);
+                    std::string str(packet.data.message_to_server, packet.data.message_to_server + packet.length);
                     std::cout << username << ": " << str << std::endl;
                     const int channelID = 1;
                     insertData(directoryDatabase, username, str, channelID);
 
+                    Packet broadcastingPacket;
+                    broadcastingPacket.packetType = PACKET_TYPE_MSG_FROM_SERVER;
+                    broadcastingPacket.length = static_cast<uint32_t>(str.length());
+                    memcpy(broadcastingPacket.data.message_from_server.text, str.c_str(), str.length());
+                    memset(broadcastingPacket.data.message_from_server.username, 0, 50);
+                    memcpy(broadcastingPacket.data.message_from_server.username, username.c_str(), username.length());
+
                     for (int j = 0; j < master.fd_count; j++) {
                         SOCKET outSock = master.fd_array[j];
                         if (outSock != serverSocket && outSock != sock) {
-                            std::ostringstream ss;
-                            ss << username << ": " << str /* << "\r\n" */;
-                            std::string strOut = ss.str();
-                            Packet broadcastingPacket;
-                            broadcastingPacket.packetType = packet.packetType;
-                            broadcastingPacket.length = static_cast<uint32_t>(strOut.length());
-                            memcpy(broadcastingPacket.data, strOut.c_str(), strOut.length());
                             send(outSock, reinterpret_cast<char*>(&broadcastingPacket), sizeof(Packet), 0);
                         }
                     }
