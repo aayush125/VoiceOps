@@ -2,6 +2,35 @@
 #include "Window.hpp"
 #include "common/text_packet.h"
 
+void receivePicture(SOCKET socket, Packet initialPacket) {
+    std::vector<unsigned char> pictureData;
+    pictureData.insert(pictureData.end(), initialPacket.data, initialPacket.data + initialPacket.length);
+    uint32_t expectedPacketType = PACKET_TYPE_PICTURE;
+
+    while (true) {
+        Packet packet;
+        int bytesReceived = recv(socket, reinterpret_cast<char*>(&packet), sizeof(Packet), 0);
+        if (bytesReceived <= 0) {
+            // Handle error or connection closed
+            break;
+        }
+
+        if (packet.packetType != expectedPacketType) {
+            // Handle unexpected packet type
+            break;
+        }
+
+        pictureData.insert(pictureData.end(), packet.data, packet.data + packet.length);
+
+        if (packet.length < MAX_PACKET_SIZE) {
+            // Last packet received, stop receiving
+            break;
+        }
+    }
+
+    // Process the received picture data here
+}
+
 bool createSocket(ServerInfo& server_info, SOCKET* tcpSocket, SOCKET* udpSocket) {
     sockaddr_in server;
 
@@ -89,7 +118,7 @@ bool createSocket(ServerInfo& server_info, SOCKET* tcpSocket, SOCKET* udpSocket)
         std::cout << "[UDP] Client:connect()- Failed to connect." << std::endl;
         closesocket(*udpSocket);
         return false;
-    }    
+    }
 
     return true;
 }
@@ -122,6 +151,8 @@ void ReceiveMessages(SOCKET clientSocket, GMutex& mutex, DataStore& data, VoiceO
 
             auto* user_data = new std::tuple<VoiceOpsWindow&, std::string, std::string>(windowref, str, username);
             g_idle_add(idle_callback, user_data);
+        } else if (bytesReceived > 0 && receivePacket.packetType == PACKET_TYPE_PICTURE) {
+            receivePicture(clientSocket, receivePacket);
         } else if (bytesReceived == 0) {
             std::cout << "Connection closed by server." << std::endl;
             break;
