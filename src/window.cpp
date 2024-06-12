@@ -1,5 +1,6 @@
 #include <chrono>
 #include <iostream>
+#include <fstream>
 
 #include "Dialogs.hpp"
 #include "Window.hpp"
@@ -13,6 +14,51 @@
 
 static DataStore data;
 static GMutex mutex;
+
+std::vector<unsigned char> loadPicture(const std::string& fileName) {
+    std::ifstream file(fileName, std::ios::binary | std::ios::ate);
+    if (!file.is_open()) {
+        std::cerr << "Failed to open file: " << fileName << std::endl;
+        return {};
+    }
+
+    std::streamsize fileSize = file.tellg();
+    file.seekg(0, std::ios::beg);
+
+    std::vector<unsigned char> pictureData(fileSize);
+    file.read(reinterpret_cast<char*>(pictureData.data()), fileSize);
+
+    file.close();
+
+    return pictureData;
+}
+
+void sendPicture(const std::string& filename, SOCKET socket) {
+    std::vector<unsigned char> pictureData = loadPicture(filename);
+    std::cout << pictureData.size() << std::endl;
+    if (pictureData.empty()) {
+        // Handle error
+        return;
+    }
+
+    const size_t dataSize = pictureData.size();
+    const size_t numPackets = (dataSize + MAX_PACKET_SIZE - 1) / MAX_PACKET_SIZE;
+
+    int counter = 0;
+    for (size_t i = 0; i < numPackets; ++i) {
+        Packet packet;
+        packet.packetType = PACKET_TYPE_IMAGE;
+        packet.length = static_cast<uint32_t>(min(dataSize - i * MAX_PACKET_SIZE, MAX_PACKET_SIZE));
+        memcpy(packet.data.image, pictureData.data() + i * MAX_PACKET_SIZE, packet.length);
+
+        // Send the packet over the network
+        send(socket, reinterpret_cast<const char*>(&packet), sizeof(Packet), 0);
+
+        counter++;
+    }
+
+    std::cout << "Counter: " << counter << std::endl;
+}
 
 Glib::RefPtr<Gdk::Pixbuf> create_pixbuf_from_screenshot(VoiceOpsWindow* windowref) {
     std::vector<BYTE> pixels;
@@ -387,9 +433,21 @@ void VoiceOpsWindow::server_content_panel(bool pSelectedServer) {
     mMessageEntry->set_hexpand(true);
     textBox->set_hexpand(true);
 
+    auto fileNameBox = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 5);
     auto fileNameLabel = Gtk::make_managed<Gtk::Label>();
+    auto removeBtn = Gtk::make_managed<Gtk::Button>("x");
+    removeBtn->signal_clicked().connect([this, removeBtn, fileNameLabel]() {
+        this->mSelectedServer->selectedFilePath = "";
+        fileNameLabel->set_text("");
+        removeBtn->set_visible(false);
+    });
+    removeBtn->set_visible(false);
+    fileNameBox->append(*fileNameLabel);
+    fileNameBox->append(*removeBtn);
 
-    textBox->append(*fileNameLabel);
+    fileNameBox->set_halign(Gtk::Align::CENTER);
+
+    textBox->append(*fileNameBox);
     
     textMessagePortion->append(*mVoiceCallButton);
     textMessagePortion->append(*mMessageEntry);
@@ -441,8 +499,13 @@ void VoiceOpsWindow::on_photo_response(const Gtk::FileChooserNative& pFileChoose
         auto innerWrap = mServerContentBox->get_first_child();
         auto textBox = innerWrap->get_last_child();
 
+        mSelectedServer->selectedFilePath = filePath;
+
         if (textBox) {
-            auto label = dynamic_cast<Gtk::Label*>(textBox->get_first_child());
+            auto fileNameBox = dynamic_cast<Gtk::Box*>(textBox->get_first_child());
+            auto btn = dynamic_cast<Gtk::Button*>(fileNameBox->get_last_child());
+            if (btn) btn->set_visible(true);
+            auto label = dynamic_cast<Gtk::Label*>(fileNameBox->get_first_child());
             if (label) label->set_text("Selected file: " + filePath.substr(filePath.find_last_of('\\') + 1, filePath.length()));
             else std::cerr << "Error accessing label for the file name.\n";
         } else {
@@ -456,8 +519,7 @@ void VoiceOpsWindow::scroll_to_latest_message() {
     while (widget) {
         if (auto parent = dynamic_cast<Gtk::ScrolledWindow*>(widget->get_parent())) {
             auto adjustment = parent->get_vadjustment();
-            adjustment->set_value(adjustment->get_upper() - adjustment->get_page_size());
-            parent->set_vadjustment(adjustment);
+            adjustment->set_value(adjustment->get_upper());
             break;
         }
         widget = widget->get_parent();
@@ -483,30 +545,49 @@ Gtk::Box* VoiceOpsWindow::top_bar() {
 void VoiceOpsWindow::on_send_button_clicked() {
     auto message = mMessageEntry->get_text();
 
-    if (message.empty() || message.find_first_not_of(' ') == std::string::npos) return;
+    if (!message.empty() && !(message.find_first_not_of(' ') == std::string::npos)) {
+        std::cout << "Send button clicked. Message: " << message.c_str() << "\n";
 
-    std::cout << "Send button clicked. Message: " << message.c_str() << "\n";
+        Packet packet;
+        packet.packetType = PACKET_TYPE_MSG_TO_SERVER;
+        packet.length = message.bytes();
+        memcpy(packet.data.message_to_server, message.c_str(), message.bytes());
 
-    Packet packet;
-    packet.packetType = PACKET_TYPE_MSG_TO_SERVER;
-    packet.length = message.bytes();
-    memcpy(packet.data.message_to_server, message.c_str(), message.bytes());
+        // Todo: @aveens13 | @kripesh101: sizeof(Packet) is overkill.
+        int byteCount = send(mClientTCPSocket, reinterpret_cast<const char*>(&packet), sizeof(Packet), 0);
+        if (byteCount == SOCKET_ERROR) {
+            std::cout << "Error in sending data to server: " << WSAGetLastError() << std::endl;
+            return;
+        }
 
-    // Todo: @aveens13 | @kripesh101: sizeof(Packet) is overkill.
-    int byteCount = send(mClientTCPSocket, reinterpret_cast<const char*>(&packet), sizeof(Packet), 0);
-    if (byteCount == SOCKET_ERROR) {
-        std::cout << "Error in sending data to server: " << WSAGetLastError() << std::endl;
-        return;
+        add_new_message(mSelectedServer->info.username, message.c_str());
     }
 
-    add_new_message(mSelectedServer->info.username, message.c_str());
-
-    scroll_to_latest_message();
-
-    send(mClientTCPSocket, message.c_str(), message.bytes(), 0);
+    if (mSelectedServer->selectedFilePath != "") {
+        Glib::signal_timeout().connect_once([this]{
+            sendPicture (mSelectedServer->selectedFilePath, mClientTCPSocket);
+            mSelectedServer->selectedFilePath = "";
+        }, 10);
+        auto pixbuf = Gdk::Pixbuf::create_from_file(mSelectedServer->selectedFilePath);
+        add_new_message(mSelectedServer->info.username, pixbuf);
+    }
 
     mMessageEntry->set_text("");
     mMessageEntry->grab_focus();
+
+    auto innerWrap = mServerContentBox->get_first_child();
+    auto textBox = innerWrap->get_last_child();
+
+    if (textBox) {
+        auto fileNameBox = dynamic_cast<Gtk::Box*>(textBox->get_first_child());
+        auto btn = dynamic_cast<Gtk::Button*>(fileNameBox->get_last_child());
+        if (btn) btn->set_visible(false);
+        auto label = dynamic_cast<Gtk::Label*>(fileNameBox->get_first_child());
+        if (label) label->set_text("");
+        else std::cerr << "Error accessing label for the file name.\n";
+    } else {
+        std::cerr << "Error accessing parent of the label for the file name.\n";
+    }
 }
 
 void VoiceOpsWindow::add_new_message(std::string pUsername, const char* pMessage) {
@@ -550,6 +631,8 @@ void VoiceOpsWindow::add_new_message(std::string pUsername, const char* pMessage
     mChatList->append(*messageBox);
 
     mSelectedServer->previousSender = pUsername;
+
+    Glib::signal_timeout().connect_once(sigc::mem_fun(*this, &VoiceOpsWindow::scroll_to_latest_message), 50);
 }
 
 void VoiceOpsWindow::add_new_message(std::string pUsername, Glib::RefPtr<Gdk::Pixbuf> pImage) {
@@ -611,6 +694,8 @@ void VoiceOpsWindow::add_new_message(std::string pUsername, Glib::RefPtr<Gdk::Pi
     mChatList->append(*messageBox);
 
     mSelectedServer->previousSender = pUsername;
+
+    Glib::signal_timeout().connect_once(sigc::mem_fun(*this, &VoiceOpsWindow::scroll_to_latest_message), 50);
 }
 
 // void VoiceOpsWindow::add_new_message(const char* pMessageType, std::string pUsername = "", const char* pMessage = "", Glib::RefPtr<Gdk::Pixbuf> pImage = nullptr) {

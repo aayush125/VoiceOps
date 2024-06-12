@@ -5,6 +5,8 @@
 void receivePicture(SOCKET socket, std::string username, VoiceOpsWindow& windowref) {
     std::vector<unsigned char> pictureData;
 
+    int counter = 0;
+
     while (true) {
         Packet packet;
         int bytesReceived = recv(socket, reinterpret_cast<char*>(&packet), sizeof(Packet), 0);
@@ -15,7 +17,9 @@ void receivePicture(SOCKET socket, std::string username, VoiceOpsWindow& windowr
 
         if (packet.packetType != PACKET_TYPE_IMAGE) {
             // Handle unexpected packet type
-            break;
+            std::cout << "Unexpected packet type: " << packet.packetType << std::endl;
+            std::cout << "Counter: " << counter << std::endl;
+            continue;
         }
 
         pictureData.insert(pictureData.end(), packet.data.image, packet.data.image + packet.length);
@@ -24,10 +28,12 @@ void receivePicture(SOCKET socket, std::string username, VoiceOpsWindow& windowr
             // Last packet received, stop receiving
             break;
         }
+
+        counter++;
     }
 
     // Process the received picture data here
-
+    
     // Create a Glib::MemoryInputStream from the PNG data
     Glib::RefPtr<Gio::MemoryInputStream> stream = Gio::MemoryInputStream::create();
     stream->add_data(&pictureData[0], pictureData.size(), nullptr);
@@ -149,6 +155,7 @@ static gboolean idle_callback(gpointer user_data) {
     return G_SOURCE_REMOVE;
 }
 
+
 void ReceiveMessages(SOCKET clientSocket, GMutex& mutex, DataStore& data, VoiceOpsWindow& windowref) {
     Packet receivePacket;
     while (true) {
@@ -167,13 +174,14 @@ void ReceiveMessages(SOCKET clientSocket, GMutex& mutex, DataStore& data, VoiceO
             g_idle_add(idle_callback, user_data);
         } else if (bytesReceived > 0 && receivePacket.packetType == PACKET_TYPE_IMAGE_FROM_SERVER_FIRST_PACKET) {
             std::string username(receivePacket.data.image_sender);
+            std::cout << "Receiving image from user: " << username << std::endl;
             receivePicture(clientSocket, username, windowref);
         } else if (bytesReceived == 0) {
             std::cout << "Connection closed by server." << std::endl;
             break;
         } else {
             std::cerr << "Error in receiving data from server: " << WSAGetLastError() << std::endl;
-            break;
+            // break;
         }
     }
 }

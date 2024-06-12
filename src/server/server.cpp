@@ -59,11 +59,13 @@ void receivePicture(SOCKET sock, Packet initialPacket, const std::string& userna
         int bytesReceived = recv(sock, reinterpret_cast<char*>(&packet), sizeof(Packet), 0);
         if (bytesReceived <= 0) {
             // Handle error or connection closed
+            std::cout << "Server log 1\n";
             break;
         }
 
         if (packet.packetType != PACKET_TYPE_IMAGE) {
             // Handle unexpected packet type
+            std::cout << "Server log 2\n";
             break;
         }
 

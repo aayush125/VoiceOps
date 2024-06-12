@@ -14,6 +14,7 @@ struct ServerCard {
     ServerInfo info;
     Gtk::Button* button;
     std::string previousSender;
+    std::string selectedFilePath;
 };
 
 struct DataStore {
