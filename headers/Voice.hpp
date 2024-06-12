@@ -11,4 +11,5 @@ namespace Voice {
     void newThread(SOCKET UDPSocket);
     void joinThread();
     void forceStop();
+    bool getVoiceStatus();
 }

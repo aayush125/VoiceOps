@@ -48,6 +48,7 @@ class VoiceOpsWindow : public Gtk::Window {
         Gtk::Box* mServerContentBox = nullptr;
         Gtk::Entry* mMessageEntry;
         Gtk::Box* mChatList;
+        Gtk::Button* mVoiceCallButton;
         ServerCard* mSelectedServer;
         std::vector<ServerCard> mServerCards;
         std::vector<ServerInfo> mServers;

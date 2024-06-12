@@ -367,11 +367,11 @@ void VoiceOpsWindow::server_content_panel(bool pSelectedServer) {
 
     auto textMessagePortion = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 5);
 
-    auto voiceCallButton = Gtk::make_managed<Gtk::Button>();
-    auto pixbuf = Gdk::Pixbuf::create_from_file("./css/mic.png");
+    mVoiceCallButton = Gtk::make_managed<Gtk::Button>();
+    auto pixbuf = Gdk::Pixbuf::create_from_file("./css/mic_disconnected.png");
     auto voiceImage = Gtk::make_managed<Gtk::Image>(pixbuf);
-    voiceCallButton->set_child(*voiceImage);
-    voiceCallButton->signal_clicked().connect(sigc::mem_fun(*this, &VoiceOpsWindow::on_voice_join));
+    mVoiceCallButton->set_child(*voiceImage);
+    mVoiceCallButton->signal_clicked().connect(sigc::mem_fun(*this, &VoiceOpsWindow::on_voice_join));
     
     mMessageEntry = Gtk::make_managed<Gtk::Entry>();
     mMessageEntry->signal_activate().connect(sigc::mem_fun(*this, &VoiceOpsWindow::on_send_button_clicked));
@@ -391,7 +391,7 @@ void VoiceOpsWindow::server_content_panel(bool pSelectedServer) {
 
     textBox->append(*fileNameLabel);
     
-    textMessagePortion->append(*voiceCallButton);
+    textMessagePortion->append(*mVoiceCallButton);
     textMessagePortion->append(*mMessageEntry);
     textMessagePortion->append(*choosePhotoButton);
     textMessagePortion->append(*sendButton);
@@ -406,6 +406,15 @@ void VoiceOpsWindow::server_content_panel(bool pSelectedServer) {
 
 void VoiceOpsWindow::on_voice_join() {
     Voice::toggle();
+    if (Voice::getVoiceStatus()) {
+        auto pixbuf = Gdk::Pixbuf::create_from_file("./css/mic.png");
+        auto voiceImage = Gtk::make_managed<Gtk::Image>(pixbuf);
+        mVoiceCallButton->set_child(*voiceImage);
+    } else {
+        auto pixbuf = Gdk::Pixbuf::create_from_file("./css/mic_disconnected.png");
+        auto voiceImage = Gtk::make_managed<Gtk::Image>(pixbuf);
+        mVoiceCallButton->set_child(*voiceImage);
+    }
 }
 
 void VoiceOpsWindow::on_photo_button_clicked() {

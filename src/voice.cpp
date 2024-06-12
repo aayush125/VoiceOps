@@ -177,3 +177,7 @@ void Voice::forceStop() {
     ma_device_stop(&device);
     voiceConnected = false;
 }
+
+bool Voice::getVoiceStatus() {
+    return voiceConnected;
+}
