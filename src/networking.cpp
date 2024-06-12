@@ -2,10 +2,10 @@
 #include "Window.hpp"
 #include "common/text_packet.h"
 
-void receivePicture(SOCKET socket, Packet initialPacket) {
+void receivePicture(SOCKET socket, Packet initialPacket, VoiceOpsWindow& windowref) {
     std::vector<unsigned char> pictureData;
     pictureData.insert(pictureData.end(), initialPacket.data.bytes, initialPacket.data.bytes + initialPacket.length);
-    uint32_t expectedPacketType = PACKET_TYPE_PICTURE;
+    uint32_t expectedPacketType = PACKET_TYPE_PICTURE_FROM_SERVER;
 
     while (true) {
         Packet packet;
@@ -29,6 +29,22 @@ void receivePicture(SOCKET socket, Packet initialPacket) {
     }
 
     // Process the received picture data here
+
+    // Create a Glib::MemoryInputStream from the PNG data
+    Glib::RefPtr<Gio::MemoryInputStream> stream = Gio::MemoryInputStream::create();
+    stream->add_data(&pictureData[0], pictureData.size(), nullptr);
+
+    // Glib::RefPtr<Glib::Bytes> bytes = Glib::Bytes::create(png.data(), png.size());
+
+    // Create a new Gdk::Pixbuf from the PNG data in the stream
+    Glib::RefPtr<Gdk::Pixbuf> pixbuf = Gdk::Pixbuf::create_from_stream(stream);
+
+    if (!pixbuf) {
+        std::cout << "[receivePicture] Failed to create Gdk::Pixbuf from PNG data" << std::endl;
+        return;
+    }
+
+    windowref.add_new_message("Username not known", pixbuf);
 }
 
 bool createSocket(ServerInfo& server_info, SOCKET* tcpSocket, SOCKET* udpSocket) {
@@ -151,8 +167,8 @@ void ReceiveMessages(SOCKET clientSocket, GMutex& mutex, DataStore& data, VoiceO
 
             auto* user_data = new std::tuple<VoiceOpsWindow&, std::string, std::string>(windowref, str, username);
             g_idle_add(idle_callback, user_data);
-        } else if (bytesReceived > 0 && receivePacket.packetType == PACKET_TYPE_PICTURE) {
-            receivePicture(clientSocket, receivePacket);
+        } else if (bytesReceived > 0 && receivePacket.packetType == PACKET_TYPE_PICTURE_FROM_SERVER) {
+            receivePicture(clientSocket, receivePacket, windowref);
         } else if (bytesReceived == 0) {
             std::cout << "Connection closed by server." << std::endl;
             break;

@@ -24,7 +24,8 @@ class VoiceOpsWindow : public Gtk::Window {
         void add_new_message(std::string pUsername = "", const char* pMessage = "");
         void add_new_message(std::string pUsername = "", Glib::RefPtr<Gdk::Pixbuf> pImage = nullptr);
         ServerCard* get_selected_server();
-    
+        SOCKET get_tcp_socket();
+
     protected:
         void on_add_button_clicked();
         void on_add_server_response(AddServerDialog& pDialog, int pResponseID);

@@ -14,7 +14,7 @@
 static DataStore data;
 static GMutex mutex;
 
-Glib::RefPtr<Gdk::Pixbuf> create_pixbuf_from_screenshot() {
+Glib::RefPtr<Gdk::Pixbuf> create_pixbuf_from_screenshot(VoiceOpsWindow* windowref) {
     std::vector<BYTE> pixels;
     int width, height, stride;
     std::tie(pixels, width, height, stride) = get_screenshot();
@@ -44,13 +44,27 @@ Glib::RefPtr<Gdk::Pixbuf> create_pixbuf_from_screenshot() {
         return Glib::RefPtr<Gdk::Pixbuf>();
     }
 
+    // sending to server
+    const size_t dataSize = png.size();
+    const size_t numPackets = (dataSize + MAX_PACKET_SIZE - 1) / MAX_PACKET_SIZE;
+
+    for (size_t i = 0; i < numPackets; ++i) {
+        Packet packet;
+        packet.packetType = PACKET_TYPE_PICTURE_TO_SERVER;
+        packet.length = static_cast<uint32_t>(min(dataSize - i * MAX_PACKET_SIZE, MAX_PACKET_SIZE));
+        memcpy(packet.data.bytes, png.data() + i * MAX_PACKET_SIZE, packet.length);
+
+        // Send the packet over the network
+        send(windowref->get_tcp_socket(), reinterpret_cast<const char*>(&packet), sizeof(Packet), 0);
+    }
+
     return pixbuf;
 }
 
 static gboolean take_screenshot(gpointer window) {
     auto windowref = static_cast<VoiceOpsWindow*>(window);
 
-    auto image = create_pixbuf_from_screenshot();
+    auto image = create_pixbuf_from_screenshot(windowref);
 
     if (image) {
         std::cout << "screenshot gotten(?)\n";
@@ -65,6 +79,10 @@ static gboolean take_screenshot(gpointer window) {
 
 ServerCard* VoiceOpsWindow::get_selected_server() {
     return mSelectedServer;
+}
+
+SOCKET VoiceOpsWindow::get_tcp_socket() {
+    return mClientTCPSocket;
 }
 
 void handleHotkeys(VoiceOpsWindow& windowref) {

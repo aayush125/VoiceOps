@@ -207,8 +207,9 @@ int main(int argc, char* argv[]) {
                         }
                     }
 
-                } else if (packet.packetType == PACKET_TYPE_PICTURE) {
+                } else if (packet.packetType == PACKET_TYPE_PICTURE_TO_SERVER) {
                     // Broadcast the picture packets to other clients
+                    packet.packetType = PACKET_TYPE_PICTURE_FROM_SERVER;
                     std::cout << "Sending Picture packet " << ++picturePacketCounter << std::endl;
                     for (int j = 0; j < master.fd_count; j++) {
                         SOCKET outSock = master.fd_array[j];

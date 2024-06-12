@@ -3,10 +3,13 @@
 #include <cinttypes>
 #define MAX_PACKET_SIZE 1500
 
+#define min(a,b) (a < b ? a : b)
+
 enum PacketType: uint32_t {
     PACKET_TYPE_MSG_TO_SERVER = 1,
     PACKET_TYPE_MSG_FROM_SERVER = 2,
-    PACKET_TYPE_PICTURE = 3,
+    PACKET_TYPE_PICTURE_TO_SERVER = 3,
+    PACKET_TYPE_PICTURE_FROM_SERVER,
     PACKET_TYPE_VOICE_JOIN, // Client -> Server
     PACKET_TYPE_VOICE_LEAVE, // Client -> Server
     PACKET_TYPE_VOICE_STATUS // Server -> all Clients
