@@ -78,7 +78,7 @@ static gboolean idle_callback(gpointer user_data) {
     VoiceOpsWindow& windowref = data->first;
     std::string message = data->second;
 
-    windowref.add_new_message(message.c_str(), "Client Name");
+    windowref.add_new_message("Client Name", message.c_str());
 
     delete data;
     return G_SOURCE_REMOVE;
