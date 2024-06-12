@@ -129,7 +129,7 @@ static gboolean idle_callback(gpointer user_data) {
     std::string message = std::get<1>(*data);
     std::string username = std::get<2>(*data);
 
-    windowref.add_new_message(message.c_str(), username);
+    windowref.add_new_message(username, message.c_str());
 
     delete data;
     return G_SOURCE_REMOVE;

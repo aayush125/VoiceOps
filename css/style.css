@@ -137,3 +137,12 @@
    color: #e0e0e0;
    font-size: 17px;
  }
+
+ #chat-image-box {
+  width: 100%;
+ }
+
+ #chat-image-label {
+  width: 800px;
+  height: 800px;
+ }

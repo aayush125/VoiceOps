@@ -1,5 +1,7 @@
 #pragma once
 
+#include "lodepng.h"
+
 #include <gtkmm.h>
 #include <sqlite3.h>
 #include <thread>
@@ -19,7 +21,9 @@ class VoiceOpsWindow : public Gtk::Window {
         ~VoiceOpsWindow();
 
         // friend void ReceiveMessages(SOCKET& clientSocket, GMutex& mutex, DataStore& data, Gtk::Box* chatBox);
-        void add_new_message(const char* pMessage, std::string pUsername = "");
+        void add_new_message(std::string pUsername = "", const char* pMessage = "");
+        void add_new_message(std::string pUsername = "", Glib::RefPtr<Gdk::Pixbuf> pImage = nullptr);
+        ServerCard* get_selected_server();
     
     protected:
         void on_add_button_clicked();

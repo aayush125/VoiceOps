@@ -7,20 +7,67 @@
 
 #include "Networking.hpp"
 #include "Voice.hpp"
+#include "Screenshot.hpp"
 
 #include <common/text_packet.h>
 
 static DataStore data;
 static GMutex mutex;
 
-static gboolean testhotkey(void*) {
-    auto dialog = Gtk::AlertDialog::create("Failed to connect to server.");
-    dialog->show();
+Glib::RefPtr<Gdk::Pixbuf> create_pixbuf_from_screenshot() {
+    std::vector<BYTE> pixels;
+    int width, height, stride;
+    std::tie(pixels, width, height, stride) = get_screenshot();
+
+    for (size_t i = 0; i < pixels.size(); i += 4) {
+        std::swap(pixels[i], pixels[i + 2]);  // Swap B and R
+    }
+
+    std::vector<unsigned char> png;
+    unsigned error = lodepng::encode(png, pixels, width, height);
+    if (error) {
+        std::cout << "PNG encoder error " << error << ": " << lodepng_error_text(error) << std::endl;
+        return Glib::RefPtr<Gdk::Pixbuf>();
+    }
+
+    // Create a Glib::MemoryInputStream from the PNG data
+    Glib::RefPtr<Gio::MemoryInputStream> stream = Gio::MemoryInputStream::create();
+    stream->add_data(&png[0], png.size(), nullptr);
+
+    // Glib::RefPtr<Glib::Bytes> bytes = Glib::Bytes::create(png.data(), png.size());
+
+    // Create a new Gdk::Pixbuf from the PNG data in the stream
+    Glib::RefPtr<Gdk::Pixbuf> pixbuf = Gdk::Pixbuf::create_from_stream(stream);
+
+    if (!pixbuf) {
+        std::cout << "Failed to create Gdk::Pixbuf from PNG data" << std::endl;
+        return Glib::RefPtr<Gdk::Pixbuf>();
+    }
+
+    return pixbuf;
+}
+
+static gboolean take_screenshot(gpointer window) {
+    auto windowref = static_cast<VoiceOpsWindow*>(window);
+
+    auto image = create_pixbuf_from_screenshot();
+
+    if (image) {
+        std::cout << "screenshot gotten(?)\n";
+    } else {
+        std::cerr << "Failed to get screenshot image\n";
+    }
+
+    windowref->add_new_message(windowref->get_selected_server()->info.username, image);
 
     return G_SOURCE_REMOVE;
 }
 
-void handleHotkeys() {
+ServerCard* VoiceOpsWindow::get_selected_server() {
+    return mSelectedServer;
+}
+
+void handleHotkeys(VoiceOpsWindow& windowref) {
     static bool registered = false;
     if (!registered) {
         if (!RegisterHotKey(NULL, 1, MOD_CONTROL, VK_SNAPSHOT)) {
@@ -34,7 +81,7 @@ void handleHotkeys() {
     while (GetMessage(&msg, NULL, 0, 0) != 0) {
         if (msg.message == WM_HOTKEY) {
             std::cout << "Hotkey received\n";
-            g_idle_add(testhotkey, NULL);
+            g_idle_add(take_screenshot, &windowref);
         }
     }
 }
@@ -47,7 +94,9 @@ VoiceOpsWindow::VoiceOpsWindow() {
         mHKThread.join();
     }
 
-    mHKThread = std::thread(&handleHotkeys);
+    mHKThread = std::thread([this]() {
+        handleHotkeys(*this);
+    });
 
     int rc;
 
@@ -284,28 +333,17 @@ void VoiceOpsWindow::server_content_panel(bool pSelectedServer) {
     nameLabel->set_name("chat-name-label");
     nameLabel->set_hexpand(true);
     nameLabel->set_halign(Gtk::Align::START);
-    auto messageLabel = Gtk::make_managed<Gtk::Label>("Test message: This is the message label");\
-    messageLabel->set_selectable(true);
-    messageLabel->set_name("chat-msg-label");
-    messageLabel->set_hexpand(true);
-    messageLabel->set_halign(Gtk::Align::START);
+    auto labelpixbuf = Gdk::Pixbuf::create_from_file("./css/mic.png");
+    auto labelimage = Gtk::make_managed<Gtk::Image>(labelpixbuf);
+    labelimage->set_halign(Gtk::Align::START);
     
     messageBox->append(*nameLabel);
-    messageBox->append(*messageLabel);
+    messageBox->append(*labelimage);
     
     mChatList->append(*messageBox);
     mChatList->set_expand(true);
     
     scrollWindow->set_child(*mChatList);
-
-
-    // Gtk::Label* serverName = Gtk::make_managed<Gtk::Label>(mSelectedServer->info.name);
-    // Gtk::Label* serverURL = Gtk::make_managed<Gtk::Label>(mSelectedServer->info.url);
-    // Gtk::Label* serverPort = Gtk::make_managed<Gtk::Label>(mSelectedServer->info.port);
-
-    // innerWrap->append(*serverName);
-    // innerWrap->append(*serverURL);
-    // innerWrap->append(*serverPort);
 
     auto textBox = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 5);
 
@@ -434,7 +472,7 @@ void VoiceOpsWindow::on_send_button_clicked() {
         return;
     }
 
-    add_new_message(message.c_str(), mSelectedServer->info.username);
+    add_new_message(mSelectedServer->info.username, message.c_str());
 
     scroll_to_latest_message();
 
@@ -444,7 +482,7 @@ void VoiceOpsWindow::on_send_button_clicked() {
     mMessageEntry->grab_focus();
 }
 
-void VoiceOpsWindow::add_new_message(const char* pMessage, std::string pUsername) {
+void VoiceOpsWindow::add_new_message(std::string pUsername, const char* pMessage) {
     auto messageBox = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 5);
     auto nameAndTimeLabel = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 5);
 
@@ -478,7 +516,7 @@ void VoiceOpsWindow::add_new_message(const char* pMessage, std::string pUsername
     messageLabel->set_name("chat-msg-label");
     messageLabel->set_hexpand(true);
     messageLabel->set_halign(Gtk::Align::START);
-    
+
     if (mSelectedServer->previousSender != pUsername) messageBox->append(*nameAndTimeLabel);
     messageBox->append(*messageLabel);
 
@@ -486,6 +524,116 @@ void VoiceOpsWindow::add_new_message(const char* pMessage, std::string pUsername
 
     mSelectedServer->previousSender = pUsername;
 }
+
+void VoiceOpsWindow::add_new_message(std::string pUsername, Glib::RefPtr<Gdk::Pixbuf> pImage) {
+    if (!pImage) {
+        std::cerr << "Error: Invalid image pointer\n";
+        return;
+    }
+
+    if (!mSelectedServer || !mChatList) {
+        std::cerr << "Error: Invalid server or chat list\n";
+        return;
+    }
+
+    auto messageBox = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 5);
+    messageBox->set_expand(true);
+    messageBox->set_name("chat-image-box");
+    auto nameAndTimeLabel = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 5);
+
+    auto now = std::chrono::system_clock::now();
+    std::time_t now_time_t = std::chrono::system_clock::to_time_t(now);
+    std::tm* now_tm = std::localtime(&now_time_t);
+    
+    std::string timeString = "[" + std::to_string(now_tm->tm_hour) + ":" +
+                                     std::to_string(now_tm->tm_min) +
+                                     "]";
+    
+    std::string nameString = pUsername;
+    static std::string senderName = "";
+    
+    auto timeLabel = Gtk::make_managed<Gtk::Label>(timeString.c_str());
+    timeLabel->set_selectable(true);
+    timeLabel->set_name("chat-time-label");
+    timeLabel->set_halign(Gtk::Align::START);
+
+    auto nameLabel = Gtk::make_managed<Gtk::Label>(nameString.c_str());
+    nameLabel->set_selectable(true);
+    (pUsername == mSelectedServer->info.username) ? nameLabel->set_name("chat-selfname-label") : nameLabel->set_name("chat-friendname-label");
+    nameLabel->set_hexpand(true);
+    nameLabel->set_halign(Gtk::Align::START);
+
+    nameAndTimeLabel->append(*timeLabel);
+    nameAndTimeLabel->append(*nameLabel);
+
+    // auto labelpixbuf = Gdk::Pixbuf::create_from_file("C:/opengl-coding/image.png");
+    std::cout << "Image height: " << pImage->get_height() << '\n';
+    std::cout << "Image width: " << pImage->get_width() << '\n';
+    // auto labelpixbuf = pImage->scale_simple(5000, 5000, Gdk::InterpType::BILINEAR);
+    auto messageLabel = Gtk::make_managed<Gtk::Picture>(pImage);
+    messageLabel->set_name("chat-image-label");
+    messageLabel->set_halign(Gtk::Align::START);
+
+    messageLabel->set_size_request(500, 500);
+    messageLabel->set_expand(false);
+
+
+    if (mSelectedServer->previousSender != pUsername) messageBox->append(*nameAndTimeLabel);
+    messageBox->append(*messageLabel);
+
+    mChatList->append(*messageBox);
+
+    mSelectedServer->previousSender = pUsername;
+}
+
+// void VoiceOpsWindow::add_new_message(const char* pMessageType, std::string pUsername = "", const char* pMessage = "", Glib::RefPtr<Gdk::Pixbuf> pImage = nullptr) {
+//     auto messageBox = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 5);
+//     auto nameAndTimeLabel = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 5);
+
+//     auto now = std::chrono::system_clock::now();
+//     std::time_t now_time_t = std::chrono::system_clock::to_time_t(now);
+//     std::tm* now_tm = std::localtime(&now_time_t);
+    
+//     std::string timeString = "[" + std::to_string(now_tm->tm_hour) + ":" +
+//                                      std::to_string(now_tm->tm_min) +
+//                                      "]";
+    
+//     std::string nameString = pUsername;
+//     static std::string senderName = "";
+    
+//     auto timeLabel = Gtk::make_managed<Gtk::Label>(timeString.c_str());
+//     timeLabel->set_selectable(true);
+//     timeLabel->set_name("chat-time-label");
+//     timeLabel->set_halign(Gtk::Align::START);
+
+//     auto nameLabel = Gtk::make_managed<Gtk::Label>(nameString.c_str());
+//     nameLabel->set_selectable(true);
+//     (pUsername == mSelectedServer->info.username) ? nameLabel->set_name("chat-selfname-label") : nameLabel->set_name("chat-friendname-label");
+//     nameLabel->set_hexpand(true);
+//     nameLabel->set_halign(Gtk::Align::START);
+
+//     nameAndTimeLabel->append(*timeLabel);
+//     nameAndTimeLabel->append(*nameLabel);
+
+//     if (mSelectedServer->previousSender != pUsername) messageBox->append(*nameAndTimeLabel);
+
+//     if (pMessage) {
+//         auto messageLabel = Gtk::make_managed<Gtk::Label>(pMessage);
+//         messageLabel->set_selectable(true);
+//         messageLabel->set_name("chat-msg-label");
+//         messageLabel->set_hexpand(true);
+//         messageLabel->set_halign(Gtk::Align::START);
+//         messageBox->append(*messageLabel);
+//     } else if (pImage) {
+//         auto receivedImage = Gtk::make_managed<Gtk::Image>(pImage);
+//         receivedImage->set_halign(Gtk::Align::START);
+//         messageBox->append(*receivedImage);
+//     }
+
+//     mChatList->append(*messageBox);
+
+//     mSelectedServer->previousSender = pUsername;
+// }
 
 void VoiceOpsWindow::on_add_button_clicked() {
     std::cout << "Add server button was clicked\n";
