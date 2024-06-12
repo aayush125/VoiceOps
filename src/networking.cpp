@@ -2,10 +2,8 @@
 #include "Window.hpp"
 #include "common/text_packet.h"
 
-void receivePicture(SOCKET socket, Packet initialPacket, VoiceOpsWindow& windowref) {
+void receivePicture(SOCKET socket, std::string username, VoiceOpsWindow& windowref) {
     std::vector<unsigned char> pictureData;
-    pictureData.insert(pictureData.end(), initialPacket.data.bytes, initialPacket.data.bytes + initialPacket.length);
-    uint32_t expectedPacketType = PACKET_TYPE_PICTURE_FROM_SERVER;
 
     while (true) {
         Packet packet;
@@ -15,12 +13,12 @@ void receivePicture(SOCKET socket, Packet initialPacket, VoiceOpsWindow& windowr
             break;
         }
 
-        if (packet.packetType != expectedPacketType) {
+        if (packet.packetType != PACKET_TYPE_IMAGE) {
             // Handle unexpected packet type
             break;
         }
 
-        pictureData.insert(pictureData.end(), packet.data.bytes, packet.data.bytes + packet.length);
+        pictureData.insert(pictureData.end(), packet.data.image, packet.data.image + packet.length);
 
         if (packet.length < MAX_PACKET_SIZE) {
             // Last packet received, stop receiving
@@ -44,7 +42,7 @@ void receivePicture(SOCKET socket, Packet initialPacket, VoiceOpsWindow& windowr
         return;
     }
 
-    windowref.add_new_message("Username not known", pixbuf);
+    windowref.add_new_message(username, pixbuf);
 }
 
 bool createSocket(ServerInfo& server_info, SOCKET* tcpSocket, SOCKET* udpSocket) {
@@ -167,8 +165,9 @@ void ReceiveMessages(SOCKET clientSocket, GMutex& mutex, DataStore& data, VoiceO
 
             auto* user_data = new std::tuple<VoiceOpsWindow&, std::string, std::string>(windowref, str, username);
             g_idle_add(idle_callback, user_data);
-        } else if (bytesReceived > 0 && receivePacket.packetType == PACKET_TYPE_PICTURE_FROM_SERVER) {
-            receivePicture(clientSocket, receivePacket, windowref);
+        } else if (bytesReceived > 0 && receivePacket.packetType == PACKET_TYPE_IMAGE_FROM_SERVER_FIRST_PACKET) {
+            std::string username(receivePacket.data.image_sender);
+            receivePicture(clientSocket, username, windowref);
         } else if (bytesReceived == 0) {
             std::cout << "Connection closed by server." << std::endl;
             break;

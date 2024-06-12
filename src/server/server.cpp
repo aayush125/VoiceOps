@@ -40,6 +40,47 @@ bool handleNewConnection(SOCKET clientSocket, std::string& username) {
     return false;
 }
 
+void receivePicture(SOCKET sock, Packet initialPacket, const std::string& username, fd_set& master, SOCKET &serverSocket) {
+    Packet sendPacket;
+    sendPacket.packetType = PACKET_TYPE_IMAGE_FROM_SERVER_FIRST_PACKET;
+    memset(sendPacket.data.image_sender, 0, 50);
+    memcpy(sendPacket.data.image_sender, username.c_str(), username.length());
+
+    for (int j = 0; j < master.fd_count; j++) {
+        SOCKET outSock = master.fd_array[j];
+        if (outSock != serverSocket && outSock != sock) {
+            send(outSock, reinterpret_cast<char*>(&sendPacket), 4 + 4 + 50, 0);
+            send(outSock, reinterpret_cast<char*>(&initialPacket), sizeof(Packet), 0);
+        }
+    }
+    
+    while (true) {
+        Packet packet;
+        int bytesReceived = recv(sock, reinterpret_cast<char*>(&packet), sizeof(Packet), 0);
+        if (bytesReceived <= 0) {
+            // Handle error or connection closed
+            break;
+        }
+
+        if (packet.packetType != PACKET_TYPE_IMAGE) {
+            // Handle unexpected packet type
+            break;
+        }
+
+        for (int j = 0; j < master.fd_count; j++) {
+            SOCKET outSock = master.fd_array[j];
+            if (outSock != serverSocket && outSock != sock) {
+                send(outSock, reinterpret_cast<char*>(&packet), sizeof(Packet), 0);
+            }
+        }
+
+        if (packet.length < MAX_PACKET_SIZE) {
+            // Last packet received, stop receiving
+            break;
+        }
+    }
+}
+
 int main(int argc, char* argv[]) {
     int port;
     if (argc == 2) {
@@ -124,7 +165,6 @@ int main(int argc, char* argv[]) {
     FD_ZERO(&master);
 
     FD_SET(serverSocket, &master);
-    int picturePacketCounter = 0;
     while (true) {
 
         fd_set copy = master;
@@ -207,16 +247,10 @@ int main(int argc, char* argv[]) {
                         }
                     }
 
-                } else if (packet.packetType == PACKET_TYPE_PICTURE_TO_SERVER) {
+                } else if (packet.packetType == PACKET_TYPE_IMAGE) {
                     // Broadcast the picture packets to other clients
-                    packet.packetType = PACKET_TYPE_PICTURE_FROM_SERVER;
-                    std::cout << "Sending Picture packet " << ++picturePacketCounter << std::endl;
-                    for (int j = 0; j < master.fd_count; j++) {
-                        SOCKET outSock = master.fd_array[j];
-                        if (outSock != serverSocket && outSock != sock) {
-                            send(outSock, reinterpret_cast<char*>(&packet), sizeof(Packet), 0);
-                        }
-                    }
+                    std::string& username = clientUsernames[sock];
+                    receivePicture(sock, packet, username, master, serverSocket);
                 } else if (packet.packetType == PACKET_TYPE_VOICE_JOIN) {
                     // add user to voice
                 }

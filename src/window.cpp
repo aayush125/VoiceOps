@@ -50,9 +50,9 @@ Glib::RefPtr<Gdk::Pixbuf> create_pixbuf_from_screenshot(VoiceOpsWindow* windowre
 
     for (size_t i = 0; i < numPackets; ++i) {
         Packet packet;
-        packet.packetType = PACKET_TYPE_PICTURE_TO_SERVER;
+        packet.packetType = PACKET_TYPE_IMAGE;
         packet.length = static_cast<uint32_t>(min(dataSize - i * MAX_PACKET_SIZE, MAX_PACKET_SIZE));
-        memcpy(packet.data.bytes, png.data() + i * MAX_PACKET_SIZE, packet.length);
+        memcpy(packet.data.image, png.data() + i * MAX_PACKET_SIZE, packet.length);
 
         // Send the packet over the network
         send(windowref->get_tcp_socket(), reinterpret_cast<const char*>(&packet), sizeof(Packet), 0);
