@@ -4,7 +4,7 @@
 
 void receivePicture(SOCKET socket, Packet initialPacket) {
     std::vector<unsigned char> pictureData;
-    pictureData.insert(pictureData.end(), initialPacket.data, initialPacket.data + initialPacket.length);
+    pictureData.insert(pictureData.end(), initialPacket.data.bytes, initialPacket.data.bytes + initialPacket.length);
     uint32_t expectedPacketType = PACKET_TYPE_PICTURE;
 
     while (true) {
@@ -20,7 +20,7 @@ void receivePicture(SOCKET socket, Packet initialPacket) {
             break;
         }
 
-        pictureData.insert(pictureData.end(), packet.data, packet.data + packet.length);
+        pictureData.insert(pictureData.end(), packet.data.bytes, packet.data.bytes + packet.length);
 
         if (packet.length < MAX_PACKET_SIZE) {
             // Last packet received, stop receiving
