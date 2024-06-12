@@ -6,25 +6,13 @@
 #include <ws2tcpip.h>
 
 #include "Networking.hpp"
+#include "Voice.hpp"
 #include "Screenshot.hpp"
-
-#define MINIAUDIO_IMPLEMENTATION
-#define MA_NO_GENERATION
-#define MA_ENABLE_ONLY_SPECIFIC_BACKENDS
-#define MA_ENABLE_WASAPI
-#define MA_NO_DECODING
-#define MA_NO_ENCODING
-// #define MA_NO_NODE_GRAPH
-#include <thirdparty/miniaudio.h>
 
 #include <common/text_packet.h>
 
 static DataStore data;
 static GMutex mutex;
-
-static SOCKET clientUDPSocket;
-
-sockaddr_in server;
 
 Glib::RefPtr<Gdk::Pixbuf> create_pixbuf_from_screenshot() {
     std::vector<BYTE> pixels;
@@ -98,122 +86,6 @@ void handleHotkeys(VoiceOpsWindow& windowref) {
     }
 }
 
-#include <thirdparty/opus/opus.h>
-#include <common/jitter_buffer.h>
-
-struct ClientData {
-    uint32_t prev_consumed_pkt = 0;
-
-    OpusDecoder* dec;
-    JitterBuffer jb;
-};
-
-#define MAX_CLIENTS 10
-struct Clients {
-    ClientData data[MAX_CLIENTS];
-};
-
-static Clients* clients_ptr;
-
-static OpusEncoder* enc;
-
-static ma_device device;
-
-void data_callback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount) {
-    static uint32_t current_pkt_number = 1;
-
-    if (frameCount != 480) {
-        std::cout << "[WARNING] frameCount is not 480! It is " << frameCount << " instead." << std::endl;
-        return;
-    }
-
-    VoicePacketToServer pkt;
-    uint16_t size;
-    opus_int32 workingBuffer[960] = { 0 };
-    opus_int16 tempStore[960];
-
-    for (int i = 0; i < MAX_CLIENTS; i++) {
-        auto& current = clients_ptr->data[i];
-        if (current.jb.get(&pkt, &size)) {
-            // handle pkt loss
-            if (current.prev_consumed_pkt != 0) {
-                for (uint32_t i2 = current.prev_consumed_pkt + 1; i2 < pkt.packet_number; i2++) {
-                    std::cout << "Packet loss - BAD!" << std::endl;
-
-                    int len = opus_decode(current.dec, NULL, 0, tempStore, 480, 0);
-                    if (len < 0) {
-                        std::cout << "OPUS ERROR: " << len << std::endl;
-                    }
-                }
-            }
-            current.prev_consumed_pkt = pkt.packet_number;
-
-            int len = opus_decode(current.dec, pkt.encoded_data, size, tempStore, 480, 0);
-            if (len < 0) {
-                std::cout << "OPUS ERROR: " << len << std::endl;
-            }
-
-            // Mixing
-            for (uint16_t j = 0; j < 960; j++) {
-                workingBuffer[j] += (opus_int32)tempStore[j];
-            }
-        }
-    }
-    ma_clip_samples_s16((ma_int16*)pOutput, workingBuffer, 960);
-
-    // Outgoing part below:
-    VoicePacketToServer outgoing_pkt;
-    outgoing_pkt.packet_number = current_pkt_number;
-
-    int len = opus_encode(enc, (const opus_int16*)pInput, frameCount, outgoing_pkt.encoded_data, 400);
-
-    int iResult = send(clientUDPSocket, (const char*)&outgoing_pkt, len + 4, 0);
-    if (iResult == SOCKET_ERROR) {
-        printf("sendto() failed with error code : %d", WSAGetLastError());
-    }
-
-    current_pkt_number++;
-}
-
-void ReceiveVoice(SOCKET voiceSocket) {
-    Clients clients;
-    clients_ptr = &clients;
-
-    VoicePacketFromServer incoming_pkt;
-
-    int error;
-    for (int i = 0; i < MAX_CLIENTS; i++) {
-        clients.data[i].dec = opus_decoder_create(48000, 2, &error);
-        if (error) {
-            std::cout << "Error while creating Opus Decoder #" << i << std::endl;
-            return;
-        }
-    }
-
-    enc = opus_encoder_create(48000, 2, OPUS_APPLICATION_VOIP, &error);
-    if (error) {
-        std::cout << "Error while creating Opus Encoder" << std::endl;
-        return;
-    }
-
-    // ma_device_start(&device);
-
-    while (true) {
-        int recv_len = recv(voiceSocket, (char*)&incoming_pkt, sizeof(VoicePacketFromServer), 0);
-        if (recv_len == SOCKET_ERROR) {
-            std::cout << "recv() failed with error code  " << WSAGetLastError() << std::endl;
-            continue;
-        }
-
-        VoicePacketToServer pkt;
-        // Byte alignment makes this - 8
-        memcpy(pkt.encoded_data, incoming_pkt.encoded_data, recv_len - 8);
-        pkt.packet_number = incoming_pkt.packet_number;
-
-        clients.data[incoming_pkt.userID].jb.insert(&pkt, recv_len - 8); // - 4 bytes is of packet/sequence number
-    }
-}
-
 VoiceOpsWindow::VoiceOpsWindow() {
     set_title("VoiceOps");
     set_name("main-window");
@@ -260,27 +132,7 @@ VoiceOpsWindow::VoiceOpsWindow() {
     mServerContentBox->set_name("content-box");
     mServerListBox->set_name("list-box");
 
-    // MiniAudio initialization
-    ma_result maResult;
-    ma_device_config deviceConfig;
-
-    deviceConfig = ma_device_config_init(ma_device_type_duplex);
-    deviceConfig.capture.pDeviceID = NULL;
-    deviceConfig.capture.format = ma_format_s16;
-    deviceConfig.capture.channels = 2;
-    deviceConfig.capture.shareMode = ma_share_mode_shared;
-    deviceConfig.playback.pDeviceID = NULL;
-    deviceConfig.playback.format = ma_format_s16;
-    deviceConfig.playback.channels = 2;
-    deviceConfig.dataCallback = data_callback;
-    deviceConfig.noClip = TRUE;
-    deviceConfig.wasapi.noAutoConvertSRC = TRUE;
-    deviceConfig.noPreSilencedOutputBuffer = TRUE;
-    deviceConfig.periodSizeInFrames = 480;
-    maResult = ma_device_init(NULL, &deviceConfig, &device);
-    if (maResult != MA_SUCCESS) {
-        std::cout << "Error initializing audio device" << std::endl;
-    }
+    Voice::init();
 }
 
 void VoiceOpsWindow::setup_database() {
@@ -375,28 +227,26 @@ void VoiceOpsWindow::on_server_button_clicked(ServerCard& pServer) {
     if (!createSocket(pServer.info, &newTCPSocket, &newUDPSocket)) {
         auto dialog = Gtk::AlertDialog::create("Failed to connect to server.");
         dialog->show(*this);
-        ma_device_stop(&device);
+        Voice::forceStop();
         return;
     }
 
     closesocket(mClientTCPSocket);
-    closesocket(clientUDPSocket);
+    closesocket(mClientUDPSocket);
 
     if (mListenThreadTCP.joinable()) {
         mListenThreadTCP.join();
     }
 
-    if (mListenThreadUDP.joinable()) {
-        mListenThreadUDP.join();
-    }
+    Voice::joinThread();
 
     mClientTCPSocket = newTCPSocket;
-    clientUDPSocket = newUDPSocket;
+    mClientUDPSocket = newUDPSocket;
 
     mListenThreadTCP = std::thread([this]() {
         ReceiveMessages(mClientTCPSocket, std::ref(mutex), std::ref(data), *this);
     });
-    mListenThreadUDP = std::thread(ReceiveVoice, clientUDPSocket);
+    Voice::newThread(mClientUDPSocket);
 
     mSelectedServer = &pServer;
     std::cout << "URL: " << pServer.info.url << '\n';
@@ -537,13 +387,7 @@ void VoiceOpsWindow::server_content_panel(bool pSelectedServer) {
 }
 
 void VoiceOpsWindow::on_voice_join() {
-    if (voiceConnected) {
-        ma_device_stop(&device);
-        voiceConnected = false;
-    } else {
-        ma_device_start(&device);
-        voiceConnected = true;
-    }
+    Voice::toggle();
 }
 
 void VoiceOpsWindow::on_photo_button_clicked() {

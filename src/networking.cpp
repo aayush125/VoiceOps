@@ -2,9 +2,37 @@
 #include "Window.hpp"
 #include "common/text_packet.h"
 
-extern sockaddr_in server;
+void receivePicture(SOCKET socket, Packet initialPacket) {
+    std::vector<unsigned char> pictureData;
+    pictureData.insert(pictureData.end(), initialPacket.data, initialPacket.data + initialPacket.length);
+    uint32_t expectedPacketType = PACKET_TYPE_PICTURE;
+
+    while (true) {
+        Packet packet;
+        int bytesReceived = recv(socket, reinterpret_cast<char*>(&packet), sizeof(Packet), 0);
+        if (bytesReceived <= 0) {
+            // Handle error or connection closed
+            break;
+        }
+
+        if (packet.packetType != expectedPacketType) {
+            // Handle unexpected packet type
+            break;
+        }
+
+        pictureData.insert(pictureData.end(), packet.data, packet.data + packet.length);
+
+        if (packet.length < MAX_PACKET_SIZE) {
+            // Last packet received, stop receiving
+            break;
+        }
+    }
+
+    // Process the received picture data here
+}
 
 bool createSocket(ServerInfo& server_info, SOCKET* tcpSocket, SOCKET* udpSocket) {
+    sockaddr_in server;
 
     // Setup Client Socket
     *tcpSocket = INVALID_SOCKET;
@@ -68,7 +96,7 @@ bool createSocket(ServerInfo& server_info, SOCKET* tcpSocket, SOCKET* udpSocket)
         std::cout << "[UDP] Client:connect()- Failed to connect." << std::endl;
         closesocket(*udpSocket);
         return false;
-    }    
+    }
 
     return true;
 }
@@ -92,13 +120,15 @@ void ReceiveMessages(SOCKET clientSocket, GMutex& mutex, DataStore& data, VoiceO
             g_mutex_lock(&mutex);
             // Appending message to the chat box
             std::string str(receivePacket.data, receivePacket.length);
-            
+
             g_mutex_unlock(&mutex);
 
             std::cout << "Received message: " << str << '\n';
 
             auto* user_data = new std::pair<VoiceOpsWindow&, std::string>(windowref, str);
             g_idle_add(idle_callback, user_data);
+        } else if (bytesReceived > 0 && receivePacket.packetType == PACKET_TYPE_PICTURE) {
+            receivePicture(clientSocket, receivePacket);
         } else if (bytesReceived == 0) {
             std::cout << "Connection closed by server." << std::endl;
             break;
