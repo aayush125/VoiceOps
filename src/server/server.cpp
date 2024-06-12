@@ -18,50 +18,10 @@
 #define MAX_PACKET_SIZE 1500
 
 std::vector<data> databaseQuery;
-//Map socket to usernames
+// Map socket to usernames
 std::map<SOCKET, std::string> clientUsernames;
 
-void receivePicture(SOCKET socket, Packet initialPacket) {
-    std::vector<unsigned char> pictureData;
-    pictureData.insert(pictureData.end(), initialPacket.data, initialPacket.data + initialPacket.length);
-    uint32_t expectedPacketType = PACKET_TYPE_PICTURE;
-
-    while (true) {
-        Packet packet;
-        int bytesReceived = recv(socket, reinterpret_cast<char*>(&packet), sizeof(Packet), 0);
-        if (bytesReceived <= 0) {
-            // Handle error or connection closed
-            break;
-        }
-
-        if (packet.packetType != expectedPacketType) {
-            // Handle unexpected packet type
-            break;
-        }
-
-        pictureData.insert(pictureData.end(), packet.data, packet.data + packet.length);
-
-        if (packet.length < MAX_PACKET_SIZE) {
-            // Last packet received, stop receiving
-            break;
-        }
-    }
-
-    // Process the received picture data
-    std::cout << pictureData.size() << std::endl;
-    if (!pictureData.empty()) {
-        // Save or display the picture data
-        std::cout << "I received the image i guess" << std::endl;
-        std::string outputFilename = "output.jpg";
-        if (savePicture(pictureData, outputFilename)) {
-            std::cout << "Picture saved to " << outputFilename << std::endl;
-        } else {
-            std::cout << "Failed to save picture" << std::endl;
-        }
-    }
-}
-
-bool handleNewConnection(SOCKET clientSocket, std::string &username) {
+bool handleNewConnection(SOCKET clientSocket, std::string& username) {
     // Receive authentication packet
     AuthPacket authPacket;
 
@@ -164,7 +124,7 @@ int main(int argc, char* argv[]) {
     FD_ZERO(&master);
 
     FD_SET(serverSocket, &master);
-
+    int picturePacketCounter = 0;
     while (true) {
 
         fd_set copy = master;
@@ -203,8 +163,7 @@ int main(int argc, char* argv[]) {
                         memcpy(messagePacket.data, outMessage.c_str(), outMessage.length());
                         send(acceptSocket, reinterpret_cast<char*>(&messagePacket), sizeof(Packet), 0);
                     }
-                }
-                else {
+                } else {
                     const char* authFailure = "badauth";
                     send(acceptSocket, authFailure, strlen(authFailure), 0);
                 }
@@ -249,7 +208,14 @@ int main(int argc, char* argv[]) {
                     }
 
                 } else if (packet.packetType == PACKET_TYPE_PICTURE) {
-                    receivePicture(sock, packet);
+                    // Broadcast the picture packets to other clients
+                    std::cout << "Sending Picture packet " << ++picturePacketCounter << std::endl;
+                    for (int j = 0; j < master.fd_count; j++) {
+                        SOCKET outSock = master.fd_array[j];
+                        if (outSock != serverSocket && outSock != sock) {
+                            send(outSock, reinterpret_cast<char*>(&packet), sizeof(Packet), 0);
+                        }
+                    }
                 } else if (packet.packetType == PACKET_TYPE_VOICE_JOIN) {
                     // add user to voice
                 }
