@@ -317,8 +317,8 @@ void VoiceOpsWindow::on_server_button_clicked(ServerCard& pServer) {
     if (mSelectedServer && (pServer.info.name == mSelectedServer->info.name)) {
         return;
     } else if (mSelectedServer && (pServer.info.name != mSelectedServer->info.name)) {
-        reset_content_panel(true);
-        return;        
+        reset_content_panel();
+        Voice::forceStop();
     }
 
     std::cout << "getting here\n";
@@ -349,10 +349,16 @@ void VoiceOpsWindow::on_server_button_clicked(ServerCard& pServer) {
     });
     Voice::newThread(mClientUDPSocket);
 
+    std::cout << "Checkpoint 1\n";
+
+    if (mSelectedServer != nullptr) mSelectedServer->button->get_parent()->set_name("wrong-name");
     mSelectedServer = &pServer;
+    mSelectedServer->button->get_parent()->set_name("currently-selected-server");
     std::cout << "URL: " << pServer.info.url << '\n';
     std::cout << "Port: " << pServer.info.port << '\n';
+    std::cout << "Checkpoint 2\n";
     server_content_panel(true);
+    std::cout << "Checkpoint 3\n";
 }
 
 void VoiceOpsWindow::refresh_server_list(const std::string& pServerName, const std::string& pPassword, const std::string& pUsername, const std::string& pServerURL, const std::string& pServerPort) {
@@ -558,6 +564,8 @@ void VoiceOpsWindow::on_photo_response(const Gtk::FileChooserNative& pFileChoose
             auto label = dynamic_cast<Gtk::Label*>(fileNameBox->get_first_child());
             if (label) label->set_text("Selected file: " + filePath.substr(filePath.find_last_of('\\') + 1, filePath.length()));
             else std::cerr << "Error accessing label for the file name.\n";
+            Glib::signal_timeout().connect_once(sigc::mem_fun(*this, &VoiceOpsWindow::scroll_to_latest_message), 50);
+
         } else {
             std::cerr << "Error accessing parent of the label for the file name.\n";
         }
@@ -650,7 +658,6 @@ void VoiceOpsWindow::add_new_message(std::string pUsername, const char* pMessage
                                      "]";
     
     std::string nameString = pUsername;
-    static std::string senderName = "";
     
     auto timeLabel = Gtk::make_managed<Gtk::Label>(timeString.c_str());
     timeLabel->set_selectable(true);
@@ -729,17 +736,26 @@ void VoiceOpsWindow::add_new_message(std::string pUsername, Glib::RefPtr<Gdk::Pi
     std::cout << "Image height: " << pImage->get_height() << '\n';
     std::cout << "Image width: " << pImage->get_width() << '\n';
     // auto labelpixbuf = pImage->scale_simple(5000, 5000, Gdk::InterpType::BILINEAR);
+    auto pictureButton = Gtk::make_managed<Gtk::Button>();
     auto messageLabel = Gtk::make_managed<Gtk::Picture>(pImage);
     messageLabel->set_name("chat-image-label");
     messageLabel->set_halign(Gtk::Align::START);
     messageLabel->set_valign(Gtk::Align::FILL);
-    messageLabel->set_size_request(500, 500);
+    int width = (pImage->get_width() < 500) ? pImage->get_width() : 500;
+    int height = (pImage->get_height() < 500) ? pImage->get_height() : 500; 
+    messageLabel->set_size_request(width, height);
     messageLabel->set_can_shrink();
     messageLabel->set_expand(false);
+    pictureButton->set_child(*messageLabel);
 
+    pictureButton->signal_clicked().connect([this, pImage]() {
+        auto dialog = Gtk::make_managed<PhotoDialog>(this, pImage);
+        dialog->show();
+    });
 
     if (mSelectedServer->previousSender != pUsername) messageBox->append(*nameAndTimeLabel);
     messageBox->append(*messageLabel);
+    messageBox->append(*pictureButton);
 
     mChatList->append(*messageBox);
 
@@ -747,55 +763,6 @@ void VoiceOpsWindow::add_new_message(std::string pUsername, Glib::RefPtr<Gdk::Pi
 
     Glib::signal_timeout().connect_once(sigc::mem_fun(*this, &VoiceOpsWindow::scroll_to_latest_message), 50);
 }
-
-// void VoiceOpsWindow::add_new_message(const char* pMessageType, std::string pUsername = "", const char* pMessage = "", Glib::RefPtr<Gdk::Pixbuf> pImage = nullptr) {
-//     auto messageBox = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 5);
-//     auto nameAndTimeLabel = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 5);
-
-//     auto now = std::chrono::system_clock::now();
-//     std::time_t now_time_t = std::chrono::system_clock::to_time_t(now);
-//     std::tm* now_tm = std::localtime(&now_time_t);
-    
-//     std::string timeString = "[" + std::to_string(now_tm->tm_hour) + ":" +
-//                                      std::to_string(now_tm->tm_min) +
-//                                      "]";
-    
-//     std::string nameString = pUsername;
-//     static std::string senderName = "";
-    
-//     auto timeLabel = Gtk::make_managed<Gtk::Label>(timeString.c_str());
-//     timeLabel->set_selectable(true);
-//     timeLabel->set_name("chat-time-label");
-//     timeLabel->set_halign(Gtk::Align::START);
-
-//     auto nameLabel = Gtk::make_managed<Gtk::Label>(nameString.c_str());
-//     nameLabel->set_selectable(true);
-//     (pUsername == mSelectedServer->info.username) ? nameLabel->set_name("chat-selfname-label") : nameLabel->set_name("chat-friendname-label");
-//     nameLabel->set_hexpand(true);
-//     nameLabel->set_halign(Gtk::Align::START);
-
-//     nameAndTimeLabel->append(*timeLabel);
-//     nameAndTimeLabel->append(*nameLabel);
-
-//     if (mSelectedServer->previousSender != pUsername) messageBox->append(*nameAndTimeLabel);
-
-//     if (pMessage) {
-//         auto messageLabel = Gtk::make_managed<Gtk::Label>(pMessage);
-//         messageLabel->set_selectable(true);
-//         messageLabel->set_name("chat-msg-label");
-//         messageLabel->set_hexpand(true);
-//         messageLabel->set_halign(Gtk::Align::START);
-//         messageBox->append(*messageLabel);
-//     } else if (pImage) {
-//         auto receivedImage = Gtk::make_managed<Gtk::Image>(pImage);
-//         receivedImage->set_halign(Gtk::Align::START);
-//         messageBox->append(*receivedImage);
-//     }
-
-//     mChatList->append(*messageBox);
-
-//     mSelectedServer->previousSender = pUsername;
-// }
 
 void VoiceOpsWindow::on_add_button_clicked() {
     std::cout << "Add server button was clicked\n";
@@ -832,7 +799,6 @@ void VoiceOpsWindow::on_add_server_response(AddServerDialog& pDialog, int pRespo
     }
 }
 
-
 void VoiceOpsWindow::reset_content_panel(bool pDisconnected) {
     Gtk::Box* innerWrap = dynamic_cast<Gtk::Box*>(mServerContentBox->get_first_child());
     Gtk::Widget* widget = innerWrap->get_first_child();
@@ -841,6 +807,9 @@ void VoiceOpsWindow::reset_content_panel(bool pDisconnected) {
         widget = innerWrap->get_first_child();
     }
 
+    mSelectedServer->previousSender = "";
+    mSelectedServer->selectedFilePath = "";
+    mSelectedServer->button->get_parent()->set_name("wrong-name");
     mSelectedServer = nullptr;
 
     Gtk::Label* emptyLabel = nullptr;
@@ -852,5 +821,21 @@ void VoiceOpsWindow::reset_content_panel(bool pDisconnected) {
     if (pDisconnected) {
         auto dialog = Gtk::AlertDialog::create("You were disconnected from the server.");
         dialog->show(*this);
-    }   
+    }
+}
+
+void VoiceOpsWindow::disconnect() {
+    Voice::forceStop();
+    closesocket(mClientTCPSocket);
+    closesocket(mClientUDPSocket);
+
+    Glib::signal_idle().connect_once([this] {
+        if (mListenThreadTCP.joinable()) {
+            mListenThreadTCP.join();
+        }
+
+        Voice::joinThread();
+        
+        this->reset_content_panel(true);
+    });
 }

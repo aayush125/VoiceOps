@@ -25,3 +25,8 @@ class AddServerDialog : public Gtk::Dialog {
 
         void on_entry_changed();
 };
+
+class PhotoDialog : public Gtk::Dialog {
+    public:
+        PhotoDialog(Gtk::Window* window, Glib::RefPtr<Gdk::Pixbuf> pImage);
+};

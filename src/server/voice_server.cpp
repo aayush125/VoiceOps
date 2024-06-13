@@ -199,6 +199,17 @@ void voiceReceiver(SOCKET voiceSocket) {
             return;
         }
 
+        if (recv_len == 4) {
+            // Just 4 bytes, this is ping packet
+            char* ping = (char *) &incoming_pkt;
+
+            if (ping[0] == 'p' && ping[1] == 'i' && ping[2] == 'n' && ping[3] == 'g') {
+                // Just reply
+                sendto(voiceSocket, "ping", 4, 0, (struct sockaddr*)&sender, sender_len);
+                continue;
+            }
+        }
+
         ClientSocket curSocket = { sender.sin_addr.S_un.S_addr, sender.sin_port };
         ClientData* curData = nullptr;
         int current = -1;

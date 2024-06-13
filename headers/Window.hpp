@@ -26,6 +26,8 @@ class VoiceOpsWindow : public Gtk::Window {
         ServerCard* get_selected_server();
         SOCKET get_tcp_socket();
 
+        void disconnect();
+
     protected:
         void on_add_button_clicked();
         void on_add_server_response(AddServerDialog& pDialog, int pResponseID);

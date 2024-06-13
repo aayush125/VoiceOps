@@ -2,6 +2,20 @@
 
 #include "Dialogs.hpp"
 
+PhotoDialog::PhotoDialog(Gtk::Window* window, Glib::RefPtr<Gdk::Pixbuf> pImage) {
+    set_transient_for(*window);
+    set_title("Photo");
+    int width = (pImage->get_width() < 800) ? pImage->get_width() : 800;
+    int height = (pImage->get_height() < 800) ? pImage->get_height() : 800; 
+    set_size_request(width, height);
+
+    auto box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 5);
+    auto photo = Gtk::make_managed<Gtk::Picture>(pImage);
+    box->append(*photo);
+
+    get_content_area()->append(*box);
+}
+
 AddServerDialog::AddServerDialog(Gtk::Window* window) {
     set_transient_for(*window);
     set_title("Add Server");

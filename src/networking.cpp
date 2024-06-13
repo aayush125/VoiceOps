@@ -25,10 +25,13 @@ void receivePicture(SOCKET socket, std::string username, VoiceOpsWindow& windowr
         }
 
         if (packet.packetType != PACKET_TYPE_IMAGE) {
+            if (packet.packetType == PACKET_TYPE_IMAGE_FAILURE) {
+                std::cout << "Image Failure Packet received. Aborting." << std::endl;
+                return;
+            }
             // Handle unexpected packet type
             std::cout << "Unexpected packet type: " << packet.packetType << std::endl;
             std::cout << "Counter: " << counter << std::endl;
-            // Todo: probably discard receiving the image entirely
             return;
         }
 
@@ -176,11 +179,16 @@ void ReceiveMessages(SOCKET clientSocket, GMutex& mutex, DataStore& data, VoiceO
 
         if (res == RECEIVE_RESULT_CONN_CLOSED) {
             std::cout << "[ReceiveMessages] Connection closed by server." << std::endl;
+            windowref.disconnect();
             break;
         }
 
         if (res == RECEIVE_RESULT_ERROR) {
-            std::cerr << "[ReceiveMessages] Error in receiving data from server: " << WSAGetLastError() << std::endl;
+            int error_code = WSAGetLastError();
+            if (error_code != WSAECONNABORTED && error_code != WSAENOTSOCK) {
+                std::cerr << "[ReceiveMessages] Error in receiving data from server: " << error_code << std::endl;
+                windowref.disconnect();
+            }
             break;
         }
 
@@ -190,6 +198,7 @@ void ReceiveMessages(SOCKET clientSocket, GMutex& mutex, DataStore& data, VoiceO
             std::cout << "Received message: " << str << std::endl;
             auto* user_data = new std::tuple<VoiceOpsWindow&, std::string, std::string>(windowref, str, username);
             g_idle_add(idle_callback, user_data);
+            continue;
         }
 
         if (receivePacket.packetType == PACKET_TYPE_IMAGE_FROM_SERVER_FIRST_PACKET) {

@@ -138,6 +138,10 @@
    font-size: 17px;
  }
 
+ #currently-selected-server {
+  background: #2b2b2b;
+ }
+
  /* #chat-image-box {
   align-items: start;
  }

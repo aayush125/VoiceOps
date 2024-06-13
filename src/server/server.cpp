@@ -38,6 +38,8 @@ bool handleNewConnection(SOCKET clientSocket, std::string& username) {
 
         // TODO: ensure username is unique
 
+        std::cout << "Expected: " << server_password << " | Received: " << password << std::endl;
+
         if (server_password.compare(password) == 0) {
             std::cout << "Passwords matched" << std::endl;
             return true;
@@ -60,6 +62,8 @@ void receivePicture(SOCKET sock, Packet initialPacket, const std::string& userna
             send(outSock, reinterpret_cast<char*>(&initialPacket), sizeof(Packet), 0);
         }
     }
+
+    bool failed = false;
     
     while (true) {
         Packet packet;
@@ -67,19 +71,20 @@ void receivePicture(SOCKET sock, Packet initialPacket, const std::string& userna
         ReceiveResult res = recv_pkt(sock, packet);
 
         if (res == RECEIVE_RESULT_CONN_CLOSED) {
+            failed = true;
             break;
-            // Todo: send failure packet so client can resume
         }
 
         if (res == RECEIVE_RESULT_ERROR) {
             std::cout << "[receivePicture] Error while receiving: " << WSAGetLastError() << std::endl;
+            failed = true;
             break;
-            // Todo: send failure packet so client can resume
         }
 
         if (packet.packetType != PACKET_TYPE_IMAGE) {
             // Handle unexpected packet type
             std::cout << "Received non-image packet. Aborting." << std::endl;
+            failed = true;
             break;
         }
 
@@ -95,6 +100,17 @@ void receivePicture(SOCKET sock, Packet initialPacket, const std::string& userna
             break;
         }
     }
+
+    if (failed) {
+        sendPacket.packetType = PACKET_TYPE_IMAGE_FAILURE;
+        for (int j = 0; j < master.fd_count; j++) {
+            SOCKET outSock = master.fd_array[j];
+            if (outSock != serverSocket && outSock != sock) {
+                send(outSock, reinterpret_cast<char*>(&sendPacket), sizeof(Packet), 0);
+            }
+        }
+    }
+
 }
 
 int main(int argc, char* argv[]) {    

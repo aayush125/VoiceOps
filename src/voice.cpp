@@ -2,6 +2,7 @@
 
 #include <thread>
 #include <iostream>
+#include <chrono>
 
 #include <common/jitter_buffer.h>
 
@@ -34,6 +35,10 @@ static std::thread voiceListener;
 static ma_device device;
 static SOCKET UDPSocket;
 static boolean voiceConnected = false;
+
+static uint16_t pingCycle = 0;
+
+static std::chrono::time_point<std::chrono::high_resolution_clock> start;
 
 static void data_callback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount) {
     static uint32_t current_pkt_number = 1;
@@ -89,6 +94,21 @@ static void data_callback(ma_device* pDevice, void* pOutput, const void* pInput,
     }
 
     current_pkt_number++;
+
+    // Ping part:
+    pingCycle++;
+    if (pingCycle >= 500) {
+        // Send a ping packet every 5s
+
+        iResult = send(UDPSocket, "ping", 4, 0);
+        if (iResult == SOCKET_ERROR) {
+            printf("ping - send() failed with error code : %d", WSAGetLastError());
+        }
+
+        start = std::chrono::high_resolution_clock::now();
+
+        pingCycle = 0;
+    }
 }
 
 static void ReceiveVoice(SOCKET voiceSocket) {
@@ -116,7 +136,20 @@ static void ReceiveVoice(SOCKET voiceSocket) {
         int recv_len = recv(voiceSocket, (char*)&incoming_pkt, sizeof(VoicePacketFromServer), 0);
         if (recv_len == SOCKET_ERROR) {
             std::cout << "recv() failed with error code  " << WSAGetLastError() << std::endl;
-            continue;
+            break;
+        }
+
+        if (recv_len == 4) {
+            // Just 4 bytes, this is ping packet
+            char* ping = (char *) &incoming_pkt;
+
+            if (ping[0] == 'p' && ping[1] == 'i' && ping[2] == 'n' && ping[3] == 'g') {
+                auto end = std::chrono::high_resolution_clock::now();
+                auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+                std::cout << "[Latency] Ping: " << duration << " ms" << std::endl;
+
+                continue;
+            }
         }
 
         VoicePacketToServer pkt;
