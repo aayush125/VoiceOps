@@ -204,7 +204,8 @@ void VoiceOpsWindow::setup_database() {
     int rc;
 
     const char* sql = "CREATE TABLE IF NOT EXISTS SERVER_LIST(" \
-        "SERVER_NAME    TEXT," \
+        "SERVER_NAME    TEXT    NOT NULL," \
+        "SERVER_PASSWORD    TEXT,"\
         "SERVER_USERNAME    TEXT,"\
         "SERVER_URL     TEXT    NOT NULL," \
         "SERVER_PORT    TEXT    NOT NULL);";
@@ -219,14 +220,14 @@ void VoiceOpsWindow::setup_database() {
     }
 }
 
-void VoiceOpsWindow::insert_server_to_database(const std::string& pName, const std::string& pUsername, const std::string& pURL, const std::string& pPort) {
+void VoiceOpsWindow::insert_server_to_database(const std::string& pName, const std::string& pPassword, const std::string& pUsername, const std::string& pURL, const std::string& pPort) {
     if (pURL.empty()) {
         std::cout << "Empty server URL provided. Cannot add to database.\n";
         return;
     }
 
     char* zErrMsg = nullptr;
-    std::string sql = "INSERT INTO SERVER_LIST (SERVER_NAME, SERVER_USERNAME, SERVER_URL, SERVER_PORT) VALUES ('" + pName + "', '" + pUsername + "', '" + pURL + "', '" + pPort + "');";
+    std::string sql = "INSERT INTO SERVER_LIST (SERVER_NAME, SERVER_PASSWORD, SERVER_USERNAME, SERVER_URL, SERVER_PORT) VALUES ('" + pName + "', '" + pPassword + "', '" + pUsername + "', '" + pURL + "', '" + pPort + "');";
     int rc = sqlite3_exec(mDBHandle, sql.c_str(), nullptr, nullptr, &zErrMsg);
     if (rc != SQLITE_OK) {
         std::cout << "SQLite error: " << zErrMsg << std::endl;
@@ -812,11 +813,12 @@ void VoiceOpsWindow::on_add_server_response(AddServerDialog& pDialog, int pRespo
     switch (pResponseID) {
         case Gtk::ResponseType::OK:
             std::cout << pDialog.get_server_name() << '\n';
+            std::cout << pDialog.get_server_pass() << '\n';
             std::cout << pDialog.get_server_username() << '\n';
             std::cout << pDialog.get_server_url() << '\n';
             std::cout << pDialog.get_server_port() << '\n';
             std::cout << std::flush;
-            insert_server_to_database(pDialog.get_server_name(), pDialog.get_server_username(), pDialog.get_server_url(), pDialog.get_server_port());
+            insert_server_to_database(pDialog.get_server_name(), pDialog.get_server_pass(), pDialog.get_server_username(), pDialog.get_server_url(), pDialog.get_server_port());
             refresh_server_list(pDialog.get_server_name(), pDialog.get_server_username(), pDialog.get_server_url(), pDialog.get_server_port());
             pDialog.hide();
             std::cout << "OK was clicked\n";

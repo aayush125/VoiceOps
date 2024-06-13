@@ -5,17 +5,20 @@ class AddServerDialog : public Gtk::Dialog {
     public:
         AddServerDialog(Gtk::Window*);
         const std::string& get_server_name();
+        const std::string& get_server_pass();
         const std::string& get_server_username();
         const std::string& get_server_url();
         const std::string& get_server_port();
 
     private:
         Gtk::Entry* mServerNameEntry;
+        Gtk::Entry* mServerPasswordEntry;
         Gtk::Entry* mUserNameEntry;
         Gtk::Entry* mServerURLEntry;
         Gtk::Entry* mServerPortEntry;
 
         std::string mServerName;
+        std::string mServerPassword;
         std::string mUserName;
         std::string mServerURL;
         std::string mServerPort;

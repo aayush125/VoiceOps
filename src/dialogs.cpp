@@ -15,7 +15,6 @@ AddServerDialog::AddServerDialog(Gtk::Window* window) {
     label->set_halign(Gtk::Align::CENTER);
     label->set_valign(Gtk::Align::CENTER);
     dialogBox->append(*label);
-    // get_content_area()->append(*label);
 
     mServerNameEntry = Gtk::make_managed<Gtk::Entry>();
     mServerNameEntry->set_placeholder_text("Server Name");
@@ -24,7 +23,14 @@ AddServerDialog::AddServerDialog(Gtk::Window* window) {
     mServerNameEntry->set_margin_bottom(10);
     mServerNameEntry->signal_changed().connect(sigc::mem_fun(*this, &AddServerDialog::on_entry_changed));
     dialogBox->append(*mServerNameEntry);
-    // get_content_area()->append(*mServerNameEntry);
+
+    mServerPasswordEntry = Gtk::make_managed<Gtk::Entry>();
+    mServerPasswordEntry->set_placeholder_text("Server Password");
+    mServerPasswordEntry->set_margin_start(20);
+    mServerPasswordEntry->set_margin_end(20);
+    mServerPasswordEntry->set_margin_bottom(10);
+    mServerPasswordEntry->signal_changed().connect(sigc::mem_fun(*this, &AddServerDialog::on_entry_changed));
+    dialogBox->append(*mServerPasswordEntry);
 
     mUserNameEntry = Gtk::make_managed<Gtk::Entry>();
     mUserNameEntry->set_placeholder_text("Username for this server");
@@ -41,7 +47,6 @@ AddServerDialog::AddServerDialog(Gtk::Window* window) {
     mServerURLEntry->set_margin_bottom(10);
     mServerURLEntry->signal_changed().connect(sigc::mem_fun(*this, &AddServerDialog::on_entry_changed));
     dialogBox->append(*mServerURLEntry);
-    // get_content_area()->append(*mServerURLEntry);
 
     mServerPortEntry = Gtk::make_managed<Gtk::Entry>();
     mServerPortEntry->set_placeholder_text("Server Port");
@@ -50,7 +55,6 @@ AddServerDialog::AddServerDialog(Gtk::Window* window) {
     mServerPortEntry->set_margin_bottom(10);
     mServerPortEntry->signal_changed().connect(sigc::mem_fun(*this, &AddServerDialog::on_entry_changed));
     dialogBox->append(*mServerPortEntry);
-    // get_content_area()->append(*mServerPortEntry);
 
     get_content_area()->append(*dialogBox);
 
@@ -73,6 +77,11 @@ void AddServerDialog::on_entry_changed() {
 const std::string& AddServerDialog::get_server_name() {
     mServerName = mServerNameEntry->get_text();
     return mServerName;
+}
+
+const std::string& AddServerDialog::get_server_pass() {
+    mServerPassword = mServerPasswordEntry->get_text();
+    return mServerPassword;
 }
 
 const std::string& AddServerDialog::get_server_username() {

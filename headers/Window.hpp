@@ -70,7 +70,7 @@ class VoiceOpsWindow : public Gtk::Window {
         void setup_database();
         void refresh_server_list(const std::string& pServerName, const std::string& pUsername, const std::string& pServerURL, const std::string& pServerPort);
 
-        void insert_server_to_database(const std::string& pName, const std::string& pUsername, const std::string& pURL, const std::string& pPort);
+        void insert_server_to_database(const std::string& pName, const std::string& pPassword, const std::string& pUsername, const std::string& pURL, const std::string& pPort);
 
         void reset_content_panel(bool pDisconnected = false);
 };
