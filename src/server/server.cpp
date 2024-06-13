@@ -9,8 +9,8 @@
 #include <vector>
 #include <mutex>
 #include <map>
+#include <fstream>
 #include <cstdint>
-#include "filefunction.h"
 #include "database.h"
 #include <server/voice_server.h>
 #include <common/text_packet.h>
@@ -18,6 +18,8 @@
 std::vector<data> databaseQuery;
 // Map socket to usernames
 std::map<SOCKET, std::string> clientUsernames;
+
+std::string server_password;
 
 bool handleNewConnection(SOCKET clientSocket, std::string& username) {
     // Receive authentication packet
@@ -36,7 +38,7 @@ bool handleNewConnection(SOCKET clientSocket, std::string& username) {
 
         // TODO: ensure username is unique
 
-        if (strcmp(password.c_str(), "password") == 0) {
+        if (server_password.compare(password) == 0) {
             std::cout << "Passwords matched" << std::endl;
             return true;
         }
@@ -95,7 +97,22 @@ void receivePicture(SOCKET sock, Packet initialPacket, const std::string& userna
     }
 }
 
-int main(int argc, char* argv[]) {
+int main(int argc, char* argv[]) {    
+    std::string filename = "server_pw.ini";
+    std::ifstream file(filename);
+
+    if (file) {
+        std::getline(file, server_password);
+        file.close();
+    } else {
+        std::cout << "Create server password: ";
+        std::getline(std::cin, server_password);
+
+        std::ofstream file(filename);
+        file << server_password;
+        file.close();
+    }
+    
     int port;
     if (argc == 2) {
         port = atoi(argv[1]);

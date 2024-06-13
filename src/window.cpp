@@ -355,9 +355,9 @@ void VoiceOpsWindow::on_server_button_clicked(ServerCard& pServer) {
     server_content_panel(true);
 }
 
-void VoiceOpsWindow::refresh_server_list(const std::string& pServerName, const std::string& pUsername, const std::string& pServerURL, const std::string& pServerPort) {
+void VoiceOpsWindow::refresh_server_list(const std::string& pServerName, const std::string& pPassword, const std::string& pUsername, const std::string& pServerURL, const std::string& pServerPort) {
     bool firstEntry = mServers.empty();
-    ServerInfo newServer = {pServerName, pUsername, pServerURL, pServerPort};
+    ServerInfo newServer = {pServerName, pPassword, pUsername, pServerURL, pServerPort};
     mServers.push_back(newServer);
 
 
@@ -819,7 +819,7 @@ void VoiceOpsWindow::on_add_server_response(AddServerDialog& pDialog, int pRespo
             std::cout << pDialog.get_server_port() << '\n';
             std::cout << std::flush;
             insert_server_to_database(pDialog.get_server_name(), pDialog.get_server_pass(), pDialog.get_server_username(), pDialog.get_server_url(), pDialog.get_server_port());
-            refresh_server_list(pDialog.get_server_name(), pDialog.get_server_username(), pDialog.get_server_url(), pDialog.get_server_port());
+            refresh_server_list(pDialog.get_server_name(), pDialog.get_server_pass(), pDialog.get_server_username(), pDialog.get_server_url(), pDialog.get_server_port());
             pDialog.hide();
             std::cout << "OK was clicked\n";
             break;

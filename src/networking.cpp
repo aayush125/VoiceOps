@@ -106,7 +106,7 @@ bool createSocket(ServerInfo& server_info, SOCKET* tcpSocket, SOCKET* udpSocket)
     req.uLength = username.length();
     memcpy(req.username, username.c_str(), username.length());
 
-    std::string password = "password";
+    std::string password = server_info.pass;
     req.pLength = password.length();
     memcpy(req.password, password.c_str(), password.length());
 
