@@ -243,11 +243,23 @@ VoiceOpsWindow::~VoiceOpsWindow() {
     }
 }
 
-void VoiceOpsWindow::server_list_panel() {
+void VoiceOpsWindow::server_list_panel(bool pRefreshing) {
     database_functions::retrieve_servers(mDBHandle, mServers);
 
-    mServerListBox = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 5);
-    mServerListBox->set_margin_start(3);
+    if (pRefreshing) {
+        Gtk::Widget* widget = mServerListBox->get_first_child();
+        while (widget) {
+            mServerListBox->remove(*widget);
+            widget = mServerListBox->get_first_child();
+        }
+        mServers.clear();
+        mServerCards.clear();
+    }
+
+    if (!mServerListBox) {
+        mServerListBox = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 5);
+        mServerListBox->set_margin_start(3);
+    }
     auto topBarVBox = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 5);
     auto serverListVBox = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 5);
     serverListVBox->set_vexpand(true);
@@ -280,13 +292,36 @@ void VoiceOpsWindow::server_list_panel() {
     for (ServerCard& card : mServerCards) {
         card.button->signal_clicked().connect(sigc::bind(sigc::mem_fun(*this, &VoiceOpsWindow::on_server_button_clicked),
         card));
-        serverListVBox->append(*card.button);
+        auto box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 5);
+        box->set_name("server-holding-box");
+        auto removeBtn = Gtk::make_managed<Gtk::Button>("x");
+        removeBtn->set_name("server-remove-button");
+        removeBtn->signal_clicked().connect([this, card, box]() {
+            database_functions::remove_server(mDBHandle, card.info.name);
+            auto vBox = dynamic_cast<Gtk::Box*>(mServerListBox->get_last_child());
+            vBox->remove(*box);
+            if (!vBox->get_last_child()) {
+                server_list_panel(true);
+            }
+        });
+        box->append(*card.button);
+        box->append(*removeBtn);
+        serverListVBox->append(*box);
     }
 
     mServerListBox->append(*serverListVBox);
 }
 
 void VoiceOpsWindow::on_server_button_clicked(ServerCard& pServer) {
+    if (mSelectedServer && (pServer.info.name == mSelectedServer->info.name)) {
+        return;
+    } else if (mSelectedServer && (pServer.info.name != mSelectedServer->info.name)) {
+        reset_content_panel(true);
+        return;        
+    }
+
+    std::cout << "getting here\n";
+
     SOCKET newTCPSocket, newUDPSocket;
     if (!createSocket(pServer.info, &newTCPSocket, &newUDPSocket)) {
         auto dialog = Gtk::AlertDialog::create("Failed to connect to server.");
@@ -323,6 +358,7 @@ void VoiceOpsWindow::refresh_server_list(const std::string& pServerName, const s
     ServerInfo newServer = {pServerName, pUsername, pServerURL, pServerPort};
     mServers.push_back(newServer);
 
+
     auto serverButton = Gtk::make_managed<Gtk::Button>(pServerName);
     ServerCard newServerCard;
     newServerCard.button = serverButton;
@@ -343,8 +379,23 @@ void VoiceOpsWindow::refresh_server_list(const std::string& pServerName, const s
                 }
                 serverListVBox->set_valign(Gtk::Align::START);
             }
+            auto box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 5);
+            box->set_name("server-holding-box");
+            auto removeBtn = Gtk::make_managed<Gtk::Button>("x");
+            removeBtn->set_name("server-remove-button");
+            removeBtn->signal_clicked().connect([this, newServerCard, box]() {
+                database_functions::remove_server(mDBHandle, newServerCard.info.name);
+                auto vBox = dynamic_cast<Gtk::Box*>(mServerListBox->get_last_child());
+                vBox->remove(*box);
+                if (!vBox->get_last_child()) {
+                    server_list_panel(true);
+                }
+            });
+            box->append(*newServerCard.button);
+            box->append(*removeBtn);
+            serverListVBox->append(*box);
 
-            serverListVBox->append(*newServerCard.button);
+            // serverListVBox->append(*newServerCard.button);
         }
     }
 
@@ -782,4 +833,27 @@ void VoiceOpsWindow::on_add_server_response(AddServerDialog& pDialog, int pRespo
             std::cout << "Unexpected response: " << pResponseID << '\n';
             break;
     }
+}
+
+
+void VoiceOpsWindow::reset_content_panel(bool pDisconnected) {
+    Gtk::Box* innerWrap = dynamic_cast<Gtk::Box*>(mServerContentBox->get_first_child());
+    Gtk::Widget* widget = innerWrap->get_first_child();
+    while (widget) {
+        innerWrap->remove(*widget);
+        widget = innerWrap->get_first_child();
+    }
+
+    mSelectedServer = nullptr;
+
+    Gtk::Label* emptyLabel = nullptr;
+    emptyLabel = Gtk::make_managed<Gtk::Label>("Select a server from the left to view its contents.");
+    innerWrap->append(*emptyLabel);
+    innerWrap->set_valign(Gtk::Align::CENTER);
+    innerWrap->set_halign(Gtk::Align::CENTER);
+
+    if (pDisconnected) {
+        auto dialog = Gtk::AlertDialog::create("You were disconnected from the server.");
+        dialog->show(*this);
+    }   
 }

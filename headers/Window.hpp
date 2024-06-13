@@ -37,19 +37,19 @@ class VoiceOpsWindow : public Gtk::Window {
         void on_voice_join();
 
         void scroll_to_latest_message();
-        void server_list_panel();
+        void server_list_panel(bool pRefreshing = false);
         void server_content_panel(bool);
         Gtk::Box* top_bar();
 
         Gtk::Button mButton;
 
         sqlite3 *mDBHandle = nullptr;
-        Gtk::Box* mServerListBox;
+        Gtk::Box* mServerListBox = nullptr;
         Gtk::Box* mServerContentBox = nullptr;
         Gtk::Entry* mMessageEntry;
         Gtk::Box* mChatList;
         Gtk::Button* mVoiceCallButton;
-        ServerCard* mSelectedServer;
+        ServerCard* mSelectedServer = nullptr;
         std::vector<ServerCard> mServerCards;
         std::vector<ServerInfo> mServers;
 
@@ -71,4 +71,6 @@ class VoiceOpsWindow : public Gtk::Window {
         void refresh_server_list(const std::string& pServerName, const std::string& pUsername, const std::string& pServerURL, const std::string& pServerPort);
 
         void insert_server_to_database(const std::string& pName, const std::string& pUsername, const std::string& pURL, const std::string& pPort);
+
+        void reset_content_panel(bool pDisconnected = false);
 };

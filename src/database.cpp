@@ -29,3 +29,28 @@ void database_functions::retrieve_servers(sqlite3* pDBHandle, std::vector<Server
         std::cout << "SQLite error: " << sqlite3_errmsg(pDBHandle) << std::endl;
     }
 }
+
+void database_functions::remove_server(sqlite3* pDBHandle, const std::string& serverName) {
+    sqlite3_stmt* stmt;
+    std::string sql = "DELETE FROM SERVER_LIST WHERE SERVER_NAME = ?;";
+    int rc = sqlite3_prepare_v2(pDBHandle, sql.c_str(), -1, &stmt, nullptr);
+    if (rc != SQLITE_OK) {
+        std::cout << "SQLite error: " << sqlite3_errmsg(pDBHandle) << std::endl;
+        sqlite3_close(pDBHandle);
+        return;
+    }
+
+    rc = sqlite3_bind_text(stmt, 1, serverName.c_str(), -1, SQLITE_TRANSIENT);
+    if (rc != SQLITE_OK) {
+        std::cout << "SQLite error: " << sqlite3_errmsg(pDBHandle) << std::endl;
+        sqlite3_finalize(stmt);
+        return;
+    }
+
+    rc = sqlite3_step(stmt);
+    if (rc != SQLITE_DONE) {
+        std::cout << "SQLite error: " << sqlite3_errmsg(pDBHandle) << std::endl;
+    }
+
+    sqlite3_finalize(stmt);
+}
