@@ -30,6 +30,34 @@ void database_functions::retrieve_servers(sqlite3* pDBHandle, std::vector<Server
     }
 }
 
+std::string database_functions::retrieve_password(sqlite3* pDBHandle, const std::string& serverName) {
+    sqlite3_stmt* stmt;
+    std::string sql = "SELECT SERVER_PASSWORD FROM SERVER_LIST WHERE SERVER_NAME = ?;";
+    int rc = sqlite3_prepare_v2(pDBHandle, sql.c_str(), -1, &stmt, nullptr);
+    if (rc != SQLITE_OK) {
+        std::cout << "SQLite error: " << sqlite3_errmsg(pDBHandle) << std::endl;
+        return "";
+    }
+
+    rc = sqlite3_bind_text(stmt, 1, serverName.c_str(), -1, SQLITE_TRANSIENT);
+    if (rc != SQLITE_OK) {
+        std::cout << "SQLite error: " << sqlite3_errmsg(pDBHandle) << std::endl;
+        sqlite3_finalize(stmt);
+        return "";
+    }
+
+    std::string password;
+    rc = sqlite3_step(stmt);
+    if (rc == SQLITE_ROW) {
+        password = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+    } else if (rc != SQLITE_DONE) {
+        std::cout << "SQLite error: " << sqlite3_errmsg(pDBHandle) << std::endl;
+    }
+
+    sqlite3_finalize(stmt);
+    return password;
+}
+
 void database_functions::remove_server(sqlite3* pDBHandle, const std::string& serverName) {
     sqlite3_stmt* stmt;
     std::string sql = "DELETE FROM SERVER_LIST WHERE SERVER_NAME = ?;";
