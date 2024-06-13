@@ -43,13 +43,14 @@ bool handleNewConnection(SOCKET clientSocket, std::string& username) {
 void receivePicture(SOCKET sock, Packet initialPacket, const std::string& username, fd_set& master, SOCKET &serverSocket) {
     Packet sendPacket;
     sendPacket.packetType = PACKET_TYPE_IMAGE_FROM_SERVER_FIRST_PACKET;
+    sendPacket.length = username.length();
     memset(sendPacket.data.image_sender, 0, 50);
     memcpy(sendPacket.data.image_sender, username.c_str(), username.length());
 
     for (int j = 0; j < master.fd_count; j++) {
         SOCKET outSock = master.fd_array[j];
         if (outSock != serverSocket && outSock != sock) {
-            send(outSock, reinterpret_cast<char*>(&sendPacket), 4 + 4 + 50, 0);
+            send(outSock, reinterpret_cast<char*>(&sendPacket), sizeof(Packet), 0);
             send(outSock, reinterpret_cast<char*>(&initialPacket), sizeof(Packet), 0);
         }
     }
