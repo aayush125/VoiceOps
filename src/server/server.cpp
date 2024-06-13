@@ -49,7 +49,7 @@ void receivePicture(SOCKET sock, Packet initialPacket, const std::string& userna
     for (int j = 0; j < master.fd_count; j++) {
         SOCKET outSock = master.fd_array[j];
         if (outSock != serverSocket && outSock != sock) {
-            send(outSock, reinterpret_cast<char*>(&sendPacket), 4 + 4 + 50, 0);
+            send(outSock, reinterpret_cast<char*>(&sendPacket), sizeof(Packet), 0);
             send(outSock, reinterpret_cast<char*>(&initialPacket), sizeof(Packet), 0);
         }
     }

@@ -85,7 +85,7 @@ static void data_callback(ma_device* pDevice, void* pOutput, const void* pInput,
 
     int iResult = send(UDPSocket, (const char*)&outgoing_pkt, len + 4, 0);
     if (iResult == SOCKET_ERROR) {
-        printf("sendto() failed with error code : %d", WSAGetLastError());
+        printf("send() failed with error code : %d", WSAGetLastError());
     }
 
     current_pkt_number++;

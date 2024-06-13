@@ -564,12 +564,10 @@ void VoiceOpsWindow::on_send_button_clicked() {
     }
 
     if (mSelectedServer->selectedFilePath != "") {
-        Glib::signal_timeout().connect_once([this]{
-            sendPicture (mSelectedServer->selectedFilePath, mClientTCPSocket);
-            mSelectedServer->selectedFilePath = "";
-        }, 10);
+        sendPicture(mSelectedServer->selectedFilePath, mClientTCPSocket);
         auto pixbuf = Gdk::Pixbuf::create_from_file(mSelectedServer->selectedFilePath);
         add_new_message(mSelectedServer->info.username, pixbuf);
+        mSelectedServer->selectedFilePath = "";
     }
 
     mMessageEntry->set_text("");
