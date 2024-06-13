@@ -11,11 +11,11 @@
 #include <map>
 #include <fstream>
 #include <cstdint>
-#include "database.h"
+// #include "database.h"
 #include <server/voice_server.h>
 #include <common/text_packet.h>
 
-std::vector<data> databaseQuery;
+// std::vector<data> databaseQuery;
 // Map socket to usernames
 std::map<SOCKET, std::string> clientUsernames;
 
@@ -141,12 +141,13 @@ int main(int argc, char* argv[]) {
     int MAXCONN = 30;
     int queryMessagesLimit = 5;
     // Loading the database file
-    std::string directoryDatabaseString = "database/server.db";
-    const char* directoryDatabase = directoryDatabaseString.c_str();
+    
+    // std::string directoryDatabaseString = "database/server.db";
+    // const char* directoryDatabase = directoryDatabaseString.c_str();
 
-    createDB(directoryDatabase);
-    createTable(directoryDatabase);
-    databaseQuery = selectData(directoryDatabase, queryMessagesLimit);
+    // createDB(directoryDatabase);
+    // createTable(directoryDatabase);
+    // databaseQuery = selectData(directoryDatabase, queryMessagesLimit);
 
     // Loading the dll file
     WSADATA wsaData;
@@ -287,7 +288,7 @@ int main(int argc, char* argv[]) {
                     std::string str(packet.data.message_to_server, packet.data.message_to_server + packet.length);
                     std::cout << username << ": " << str << std::endl;
                     const int channelID = 1;
-                    insertData(directoryDatabase, username, str, channelID);
+                    // insertData(directoryDatabase, username, str, channelID);
 
                     Packet broadcastingPacket;
                     broadcastingPacket.packetType = PACKET_TYPE_MSG_FROM_SERVER;
