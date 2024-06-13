@@ -322,7 +322,7 @@ void VoiceOpsWindow::on_server_button_clicked(ServerCard& pServer) {
     }
 
     std::cout << "getting here\n";
-    std::cout << "Password for server " << pServer.info.name << ": " << database_functions::retrieve_password(mDBHandle, pServer.info.name) << '\n';
+    std::cout << "Password for server " << pServer.info.name << ": " << pServer.info.pass << '\n';
 
     SOCKET newTCPSocket, newUDPSocket;
     if (!createSocket(pServer.info, &newTCPSocket, &newUDPSocket)) {
