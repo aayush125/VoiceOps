@@ -445,17 +445,14 @@ void VoiceOpsWindow::server_content_panel(bool pSelectedServer) {
     mChatList = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 5);
     auto messageBox = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 5);
 
-    auto nameLabel = Gtk::make_managed<Gtk::Label>("Test Name");
+    auto nameLabel = Gtk::make_managed<Gtk::Label>("Your messages start here.");
     nameLabel->set_selectable(true);
-    nameLabel->set_name("chat-name-label");
+    nameLabel->set_name("server-start-message");
     nameLabel->set_hexpand(true);
+    nameLabel->set_margin_bottom(10);
     nameLabel->set_halign(Gtk::Align::START);
-    auto labelpixbuf = Gdk::Pixbuf::create_from_file("./css/mic.png");
-    auto labelimage = Gtk::make_managed<Gtk::Image>(labelpixbuf);
-    labelimage->set_halign(Gtk::Align::START);
     
     messageBox->append(*nameLabel);
-    messageBox->append(*labelimage);
     
     mChatList->append(*messageBox);
     mChatList->set_expand(true);
