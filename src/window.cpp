@@ -647,6 +647,8 @@ void VoiceOpsWindow::add_new_message(std::string pUsername, Glib::RefPtr<Gdk::Pi
     }
 
     auto messageBox = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 5);
+    messageBox->set_halign(Gtk::Align::FILL);
+    messageBox->set_valign(Gtk::Align::FILL);
     messageBox->set_expand(true);
     messageBox->set_name("chat-image-box");
     auto nameAndTimeLabel = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 5);
@@ -683,8 +685,8 @@ void VoiceOpsWindow::add_new_message(std::string pUsername, Glib::RefPtr<Gdk::Pi
     auto messageLabel = Gtk::make_managed<Gtk::Picture>(pImage);
     messageLabel->set_name("chat-image-label");
     messageLabel->set_halign(Gtk::Align::START);
-    messageLabel->set_valign(Gtk::Align::START);
-    messageLabel->set_size_request(500, 250);
+    messageLabel->set_valign(Gtk::Align::FILL);
+    messageLabel->set_size_request(500, 500);
     messageLabel->set_can_shrink();
     messageLabel->set_expand(false);
 
