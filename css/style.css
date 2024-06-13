@@ -11,9 +11,9 @@
     color: #fff;
  }
 
- #main-window button:hover {
+ /* #main-window button:hover {
      color: #000;
- }
+ } */
 
  #top-bar button,
  #dialog-ok-button {

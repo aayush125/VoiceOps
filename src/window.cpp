@@ -304,8 +304,8 @@ void VoiceOpsWindow::server_list_panel(bool pRefreshing) {
                 server_list_panel(true);
             }
         });
-        box->append(*card.button);
         box->append(*removeBtn);
+        box->append(*card.button);
         serverListVBox->append(*box);
     }
 
@@ -391,8 +391,8 @@ void VoiceOpsWindow::refresh_server_list(const std::string& pServerName, const s
                     server_list_panel(true);
                 }
             });
-            box->append(*newServerCard.button);
             box->append(*removeBtn);
+            box->append(*newServerCard.button);
             serverListVBox->append(*box);
 
             // serverListVBox->append(*newServerCard.button);
