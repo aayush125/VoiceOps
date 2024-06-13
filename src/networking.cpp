@@ -8,18 +8,28 @@ void receivePicture(SOCKET socket, std::string username, VoiceOpsWindow& windowr
     int counter = 0;
 
     while (true) {
+        counter++;
+        
         Packet packet;
-        int bytesReceived = recv(socket, reinterpret_cast<char*>(&packet), sizeof(Packet), 0);
-        if (bytesReceived <= 0) {
-            // Handle error or connection closed
-            break;
+
+        ReceiveResult res = recv_pkt(socket, packet);
+
+        if (res == RECEIVE_RESULT_CONN_CLOSED) {
+            std::cout << "[receivePicture] Connection closed by server." << std::endl;
+            return;
+        }
+
+        if (res == RECEIVE_RESULT_ERROR) {
+            std::cerr << "[receivePicture] Error in receiving data from server: " << WSAGetLastError() << std::endl;
+            return;
         }
 
         if (packet.packetType != PACKET_TYPE_IMAGE) {
             // Handle unexpected packet type
             std::cout << "Unexpected packet type: " << packet.packetType << std::endl;
             std::cout << "Counter: " << counter << std::endl;
-            continue;
+            // Todo: probably discard receiving the image entirely
+            return;
         }
 
         pictureData.insert(pictureData.end(), packet.data.image, packet.data.image + packet.length);
@@ -28,12 +38,11 @@ void receivePicture(SOCKET socket, std::string username, VoiceOpsWindow& windowr
             // Last packet received, stop receiving
             break;
         }
-
-        counter++;
     }
 
     // Process the received picture data here
-    
+    std::cout << "Receive picture of size: " << pictureData.size() << std::endl;
+
     // Create a Glib::MemoryInputStream from the PNG data
     Glib::RefPtr<Gio::MemoryInputStream> stream = Gio::MemoryInputStream::create();
     stream->add_data(&pictureData[0], pictureData.size(), nullptr);
@@ -89,37 +98,41 @@ bool createSocket(ServerInfo& server_info, SOCKET* tcpSocket, SOCKET* udpSocket)
     mode = 0;
     ioctlsocket(*tcpSocket, FIONBIO, &mode);
 
-    AuthPacket auth;
+    Packet pkt;
+    pkt.packetType = PACKET_TYPE_AUTH_REQUEST;
+    auto& req = pkt.data.auth_request;
 
     std::string username = server_info.username;
-    auth.uLength = static_cast<uint32_t>(username.length());
-    memcpy(auth.username, username.c_str(), username.length());
+    req.uLength = username.length();
+    memcpy(req.username, username.c_str(), username.length());
 
     std::string password = "password";
-    auth.pLength = static_cast<uint32_t>(password.length());
-    memcpy(auth.password, password.c_str(), password.length());
+    req.pLength = password.length();
+    memcpy(req.password, password.c_str(), password.length());
 
     // Send authentication packet
-    int bytes = send(*tcpSocket, reinterpret_cast<const char*>(&auth), sizeof(AuthPacket), 0);
+    int bytes = send(*tcpSocket, reinterpret_cast<const char*>(&pkt), sizeof(Packet), 0);
     if (bytes <= 0) {
         std::cout << "[TCP] send() - Error: " << WSAGetLastError() << std::endl;
         closesocket(*tcpSocket);
         return false;
     }
 
+    ReceiveResult res = recv_pkt(*tcpSocket, pkt);
 
-    // Receive server response
-    char buffer[256];
-    int bytesReceived = recv(*tcpSocket, buffer, sizeof(buffer) - 1, 0);
-    if (bytesReceived > 0) {
-        buffer[bytesReceived] = '\0';
-        if (strcmp(buffer, "goodauth") == 0) {
-            std::cout << "Server response: " << buffer << std::endl;
+    if (res == RECEIVE_RESULT_SUCCESS) {
+        if (pkt.data.auth_response) {
+            std::cout << "Authenticated by server!" << std::endl;
         } else {
             std::cout << "Incorrect Password" << std::endl;
             closesocket(*tcpSocket);
             return false;
         }
+    } else {
+        if (res == RECEIVE_RESULT_ERROR) {
+            std::cout << "Error: " << WSAGetLastError() << std::endl;
+        }
+        return false;
     }
 
     // UDP Socket
@@ -159,29 +172,30 @@ static gboolean idle_callback(gpointer user_data) {
 void ReceiveMessages(SOCKET clientSocket, GMutex& mutex, DataStore& data, VoiceOpsWindow& windowref) {
     Packet receivePacket;
     while (true) {
-        int bytesReceived = recv(clientSocket, reinterpret_cast<char*>(&receivePacket), sizeof(Packet), 0);
-        if (bytesReceived > 0 && receivePacket.packetType == PACKET_TYPE_MSG_FROM_SERVER) {
-            // g_mutex_lock(&mutex);
-            // Appending message to the chat box
+        ReceiveResult res = recv_pkt(clientSocket, receivePacket);
+
+        if (res == RECEIVE_RESULT_CONN_CLOSED) {
+            std::cout << "[ReceiveMessages] Connection closed by server." << std::endl;
+            break;
+        }
+
+        if (res == RECEIVE_RESULT_ERROR) {
+            std::cerr << "[ReceiveMessages] Error in receiving data from server: " << WSAGetLastError() << std::endl;
+            break;
+        }
+
+        if (receivePacket.packetType == PACKET_TYPE_MSG_FROM_SERVER) {
             std::string str(receivePacket.data.message_from_server.text, receivePacket.length);
             std::string username(receivePacket.data.message_from_server.username);
-            
-            // g_mutex_unlock(&mutex);
-
-            std::cout << "Received message: " << str << '\n';
-
+            std::cout << "Received message: " << str << std::endl;
             auto* user_data = new std::tuple<VoiceOpsWindow&, std::string, std::string>(windowref, str, username);
             g_idle_add(idle_callback, user_data);
-        } else if (bytesReceived > 0 && receivePacket.packetType == PACKET_TYPE_IMAGE_FROM_SERVER_FIRST_PACKET) {
-            std::string username(receivePacket.data.image_sender);
+        }
+
+        if (receivePacket.packetType == PACKET_TYPE_IMAGE_FROM_SERVER_FIRST_PACKET) {
+            std::string username(receivePacket.data.image_sender, receivePacket.length);
             std::cout << "Receiving image from user: " << username << std::endl;
             receivePicture(clientSocket, username, windowref);
-        } else if (bytesReceived == 0) {
-            std::cout << "Connection closed by server." << std::endl;
-            break;
-        } else {
-            std::cerr << "Error in receiving data from server: " << WSAGetLastError() << std::endl;
-            // break;
         }
     }
 }

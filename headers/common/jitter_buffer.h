@@ -25,6 +25,7 @@ private:
 
     uint8_t ready;
     uint8_t initial_index;
+    uint8_t empty_counter;
 
     GMutex lock;
 

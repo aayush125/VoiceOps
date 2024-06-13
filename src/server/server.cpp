@@ -15,27 +15,31 @@
 #include <server/voice_server.h>
 #include <common/text_packet.h>
 
-#define MAX_PACKET_SIZE 1500
-
 std::vector<data> databaseQuery;
 // Map socket to usernames
 std::map<SOCKET, std::string> clientUsernames;
 
 bool handleNewConnection(SOCKET clientSocket, std::string& username) {
     // Receive authentication packet
-    AuthPacket authPacket;
+    Packet authPacket;
+    ReceiveResult res = recv_pkt(clientSocket, authPacket);
 
-    int byteCount = recv(clientSocket, reinterpret_cast<char*>(&authPacket), sizeof(AuthPacket), 0);
-    std::string password(authPacket.password, authPacket.password + authPacket.pLength);
-    username = std::string(authPacket.username, authPacket.username + authPacket.uLength);
-    if (byteCount <= 0) {
-        std::cerr << "Failed to receive authentication packet." << std::endl;
+    if (res != RECEIVE_RESULT_SUCCESS) {
         return false;
     }
 
-    if (strcmp(password.c_str(), "password") == 0) {
-        std::cout << "Passwords matched" << std::endl;
-        return true;
+    if (authPacket.packetType == PACKET_TYPE_AUTH_REQUEST) {
+        auto& auth_data = authPacket.data.auth_request;
+
+        std::string password(auth_data.password, auth_data.password + auth_data.pLength);
+        username = std::string(auth_data.username, auth_data.username + auth_data.uLength);
+
+        // TODO: ensure username is unique
+
+        if (strcmp(password.c_str(), "password") == 0) {
+            std::cout << "Passwords matched" << std::endl;
+            return true;
+        }
     }
     return false;
 }
@@ -57,16 +61,23 @@ void receivePicture(SOCKET sock, Packet initialPacket, const std::string& userna
     
     while (true) {
         Packet packet;
-        int bytesReceived = recv(sock, reinterpret_cast<char*>(&packet), sizeof(Packet), 0);
-        if (bytesReceived <= 0) {
-            // Handle error or connection closed
-            std::cout << "Server log 1\n";
+
+        ReceiveResult res = recv_pkt(sock, packet);
+
+        if (res == RECEIVE_RESULT_CONN_CLOSED) {
             break;
+            // Todo: send failure packet so client can resume
+        }
+
+        if (res == RECEIVE_RESULT_ERROR) {
+            std::cout << "[receivePicture] Error while receiving: " << WSAGetLastError() << std::endl;
+            break;
+            // Todo: send failure packet so client can resume
         }
 
         if (packet.packetType != PACKET_TYPE_IMAGE) {
             // Handle unexpected packet type
-            std::cout << "Server log 2\n";
+            std::cout << "Received non-image packet. Aborting." << std::endl;
             break;
         }
 
@@ -190,14 +201,18 @@ int main(int argc, char* argv[]) {
                 std::string username;
                 // Add the new connection to the list of connected Clients
                 if (handleNewConnection(acceptSocket, username)) {
-                    Packet messagePacket;
-                    const char* authSuccess = "goodauth";
-                    send(acceptSocket, authSuccess, strlen(authSuccess), 0);
                     FD_SET(acceptSocket, &master);
+                    
+                    Packet pkt;
+                    pkt.packetType = PACKET_TYPE_AUTH_RESPONSE;
+                    pkt.data.auth_response = true;
+                    send(acceptSocket, reinterpret_cast<char*>(&pkt), sizeof(Packet), 0);
+                    
                     std::cout << "The username outside handleconnection is " << username << std::endl;
                     clientUsernames[acceptSocket] = username; // Store the username
 
-                    messagePacket.packetType = PACKET_TYPE_MSG_FROM_SERVER;
+                    /*
+                    pkt.packetType = PACKET_TYPE_MSG_FROM_SERVER;
                     for (const auto& row : databaseQuery) {
                         messagePacket.length = static_cast<uint32_t>(row.message.length());
                         memcpy(messagePacket.data.message_from_server.text, row.message.c_str(), row.message.length());
@@ -206,19 +221,24 @@ int main(int argc, char* argv[]) {
 
                         send(acceptSocket, reinterpret_cast<char*>(&messagePacket), sizeof(Packet), 0);
                     }
+                    */
                 } else {
-                    const char* authFailure = "badauth";
-                    send(acceptSocket, authFailure, strlen(authFailure), 0);
+                    Packet pkt;
+                    pkt.packetType = PACKET_TYPE_AUTH_RESPONSE;
+                    pkt.data.auth_response = false;
+                    send(acceptSocket, reinterpret_cast<char*>(&pkt), sizeof(Packet), 0);
                 }
 
             } else {
                 // Accept a new message
                 Packet packet;
-                int byteCount = 0;
-                byteCount = recv(sock, reinterpret_cast<char*>(&packet), sizeof(Packet), 0);
+                // int byteCount = 0;
+                // byteCount = recv(sock, reinterpret_cast<char*>(&packet), sizeof(Packet), 0);
 
-                if (byteCount <= 0) {
-                    if (byteCount == 0) {
+                ReceiveResult res = recv_pkt(sock, packet);
+
+                if (res != RECEIVE_RESULT_SUCCESS) {
+                    if (res = RECEIVE_RESULT_CONN_CLOSED) {
                         std::cout << "Client #" << sock << " disconnected." << std::endl;
                     } else {
                         std::cout << "Error with Client #" << sock << ": " << WSAGetLastError() << std::endl;

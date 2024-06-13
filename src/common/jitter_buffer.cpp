@@ -12,6 +12,7 @@ JitterBuffer::JitterBuffer() {
 
     this->initial_index = 0;
     this->ready = 0;
+    this->empty_counter = 0;
 
     g_mutex_init(&this->lock);
 }
@@ -93,6 +94,16 @@ bool JitterBuffer::get(VoicePacketToServer* pkt, uint16_t* size) {
     if (index < 0) {
         // Jitter buffer is empty
         // std::cout << "Jitter buffer is empty!" << std::endl;
+        this->empty_counter++;
+
+        // After 1s of silence or no data, reset the entire jitter buffer
+        if (this->empty_counter > 100) {
+            this->initial_index = 0;
+            this->ready = 0;
+            this->empty_counter = 0;
+        }
+
+        
         g_mutex_unlock(&this->lock);
         return false;
     }

@@ -606,7 +606,6 @@ void VoiceOpsWindow::on_send_button_clicked() {
         packet.length = message.bytes();
         memcpy(packet.data.message_to_server, message.c_str(), message.bytes());
 
-        // Todo: @aveens13 | @kripesh101: sizeof(Packet) is overkill.
         int byteCount = send(mClientTCPSocket, reinterpret_cast<const char*>(&packet), sizeof(Packet), 0);
         if (byteCount == SOCKET_ERROR) {
             std::cout << "Error in sending data to server: " << WSAGetLastError() << std::endl;
