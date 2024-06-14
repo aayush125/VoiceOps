@@ -16,6 +16,25 @@ PhotoDialog::PhotoDialog(Gtk::Window* window, Glib::RefPtr<Gdk::Pixbuf> pImage) 
     get_content_area()->append(*box);
 }
 
+OptionsDialog::OptionsDialog(Gtk::Window* window, std::string message) {
+    set_transient_for(*window);
+    set_modal(true);
+    set_title("Alert");
+
+    auto label = Gtk::make_managed<Gtk::Label>(message);
+    label->set_margin(5);
+    get_content_area()->append(*label);
+
+    add_button("Yes", Gtk::ResponseType::YES);
+    add_button("Cancel", Gtk::ResponseType::CANCEL);
+
+    auto yes_button = get_widget_for_response(Gtk::ResponseType::YES);
+    yes_button->set_margin(5);
+
+    auto cancel_button = get_widget_for_response(Gtk::ResponseType::CANCEL);
+    cancel_button->set_margin(5);
+}
+
 AddServerDialog::AddServerDialog(Gtk::Window* window) {
     set_transient_for(*window);
     set_title("Add Server");

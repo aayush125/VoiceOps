@@ -30,3 +30,8 @@ class PhotoDialog : public Gtk::Dialog {
     public:
         PhotoDialog(Gtk::Window* window, Glib::RefPtr<Gdk::Pixbuf> pImage);
 };
+
+class OptionsDialog : public Gtk::Dialog {
+    public:
+        OptionsDialog(Gtk::Window* window, std::string message);
+};

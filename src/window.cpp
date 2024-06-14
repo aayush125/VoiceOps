@@ -298,12 +298,26 @@ void VoiceOpsWindow::server_list_panel(bool pRefreshing) {
         auto removeBtn = Gtk::make_managed<Gtk::Button>("x");
         removeBtn->set_name("server-remove-button");
         removeBtn->signal_clicked().connect([this, card, box]() {
-            database_functions::remove_server(mDBHandle, card.info.name);
-            auto vBox = dynamic_cast<Gtk::Box*>(mServerListBox->get_last_child());
-            vBox->remove(*box);
-            if (!vBox->get_last_child()) {
-                server_list_panel(true);
-            }
+            auto dialog = Gtk::make_managed<OptionsDialog>(this, "Are you sure you want to remove this server?");
+            dialog->signal_response().connect([this, dialog, box, card](int response_id) { 
+                auto vBox = dynamic_cast<Gtk::Box*>(mServerListBox->get_last_child());
+                switch (response_id) {
+                    case Gtk::ResponseType::YES:
+                        database_functions::remove_server(mDBHandle, card.info.name);
+                        vBox->remove(*box);
+                        if (!vBox->get_last_child()) {
+                            server_list_panel(true);
+                        }
+                        dialog->hide();
+                    case Gtk::ResponseType::CANCEL:
+                        dialog->hide();
+                        return;
+                    default:
+                        dialog->hide();
+                        std::cerr << "Error occurred in remove button callback\n";
+                }
+             });
+             dialog->show();
         });
         box->append(*removeBtn);
         box->append(*card.button);
@@ -392,13 +406,27 @@ void VoiceOpsWindow::refresh_server_list(const std::string& pServerName, const s
             auto removeBtn = Gtk::make_managed<Gtk::Button>("x");
             removeBtn->set_name("server-remove-button");
             removeBtn->signal_clicked().connect([this, newServerCard, box]() {
-                database_functions::remove_server(mDBHandle, newServerCard.info.name);
+            auto dialog = Gtk::make_managed<OptionsDialog>(this, "Are you sure you want to remove this server?");
+            dialog->signal_response().connect([this, dialog, box, newServerCard](int response_id) { 
                 auto vBox = dynamic_cast<Gtk::Box*>(mServerListBox->get_last_child());
-                vBox->remove(*box);
-                if (!vBox->get_last_child()) {
-                    server_list_panel(true);
+                switch (response_id) {
+                    case Gtk::ResponseType::YES:
+                        database_functions::remove_server(mDBHandle, newServerCard.info.name);
+                        vBox->remove(*box);
+                        if (!vBox->get_last_child()) {
+                            server_list_panel(true);
+                        }
+                        dialog->hide();
+                    case Gtk::ResponseType::CANCEL:
+                        dialog->hide();
+                        return;
+                    default:
+                        dialog->hide();
+                        std::cerr << "Error occurred in remove button callback\n";
                 }
-            });
+             });
+             dialog->show();
+        });
             box->append(*removeBtn);
             box->append(*newServerCard.button);
             serverListVBox->append(*box);
