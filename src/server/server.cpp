@@ -219,7 +219,7 @@ int main(int argc, char* argv[]) {
     }
 
     // Spin off the voice server to a separate thread
-    // auto voiceProducerThread = std::thread(voiceReceiver, voiceServerSocket);
+    auto voiceProducerThread = std::thread(voiceReceiver, voiceServerSocket);
 
     fd_set master;
     FD_ZERO(&master);

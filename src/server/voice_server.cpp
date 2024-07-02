@@ -1,11 +1,14 @@
 #include <server/voice_server.h>
 #include <common/jitter_buffer.h>
 #include <iostream>
-#include <ws2tcpip.h>
 #include <thirdparty/opus/opus.h>
 #include <thread>
-#include <timeapi.h>
 #include <thirdparty/renamenoise.h>
+
+#ifdef _WIN32
+#include <timeapi.h>
+#endif
+
 
 struct ClientSocket {
     uint32_t address;
@@ -41,20 +44,12 @@ struct Clients {
     ClientData data[MAX_CLIENTS];
 };
 
-// #include <time.h>
-
-// double get_time_diff(struct timespec end, struct timespec start) {
-//   double difference = (double) (end.tv_sec - start.tv_sec) + 1.0e-9 * (double) (end.tv_nsec - start.tv_nsec);
-//   return difference * 1.0e6;
-// }
-
 struct SharedData {
     Clients* clients;
     SOCKET voiceSocket;
 };
 
-void CALLBACK TimeProc(UINT uID, UINT uMsg, DWORD_PTR dwUser, DWORD_PTR dw1, DWORD_PTR dw2) {
-    SharedData* data = (SharedData*)dwUser;
+inline void callback_common(SharedData *data) {
     auto& clients = data->clients;
     auto& voiceSocket = data->voiceSocket;
 
@@ -129,7 +124,7 @@ void CALLBACK TimeProc(UINT uID, UINT uMsg, DWORD_PTR dwUser, DWORD_PTR dw1, DWO
                 }
 
                 int bytesSent = sendto(voiceSocket, (const char*)&outgoing_pkt, len + 4 + 4, 0, (sockaddr*)&clients->sockaddrs[j], sizeof(sockaddr_in));
-                if (bytesSent == SOCKET_ERROR) {
+                if (bytesSent < 0) {
                     std::cout << "sendto() failed with error code : " << WSAGetLastError() << std::endl;
                     continue;
                 }
@@ -138,29 +133,43 @@ void CALLBACK TimeProc(UINT uID, UINT uMsg, DWORD_PTR dwUser, DWORD_PTR dw1, DWO
     }
 }
 
-void packetConsumer(SOCKET voiceSocket, Clients* clients) {
-    timeBeginPeriod(1);
-
-    SharedData data;
-    data.clients = clients;
-    data.voiceSocket = voiceSocket;
-
-    timeSetEvent(10, 0, TimeProc, (DWORD_PTR)&data, TIME_PERIODIC);
-
-    while (true) {
-        Sleep(1000);
-    }
-
-    // struct timespec test;
-    // clock_gettime(CLOCK_MONOTONIC, &test);
-    // std::cout << test.tv_nsec / 1000000 << std::endl;
-
-    // timeEndPeriod(1);
+#ifdef _WIN32
+void CALLBACK TimeProc(UINT uID, UINT uMsg, DWORD_PTR dwUser, DWORD_PTR dw1, DWORD_PTR dw2) {
+    SharedData* data = (SharedData*)dwUser;
+    callback_common(data);
 }
+#else
+void linux_timer(SharedData *data) {
+    struct timespec next;
+    clock_gettime(CLOCK_MONOTONIC, &next);
+    
+    while (true) {
+        callback_common(data);
+        
+        // Calculate the next wake-up time
+        next.tv_nsec += 10 * 1000 * 1000;
+        if (next.tv_nsec >= 1e9) {
+            next.tv_nsec -= 1e9;
+            next.tv_sec += 1;
+        }
+
+        // Use clock_nanosleep with TIMER_ABSTIME for precise sleep
+        int ret = clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &next, NULL);
+        if (ret != 0) {
+            if (ret == EINTR) {
+                continue;
+            } else {
+                perror("clock_nanosleep");
+                break;
+            }
+        }
+    }
+}
+#endif
 
 void voiceReceiver(SOCKET voiceSocket) {
     struct sockaddr_in sender;
-    int sender_len = sizeof(sender);
+    socklen_t sender_len = sizeof(sender);
 
     VoicePacketToServer incoming_pkt;
 
@@ -188,13 +197,21 @@ void voiceReceiver(SOCKET voiceSocket) {
         clients.data[i].denoiser_r = renamenoise_create(NULL);
     }
 
-    // Start another thread to consume and process voice packets. This thread is put on a timer.
-    auto consumer = std::thread(packetConsumer, voiceSocket, &clients);
+    SharedData data;
+    data.clients = &clients;
+    data.voiceSocket = voiceSocket;
+
+#ifdef _WIN32
+    timeBeginPeriod(1);
+    timeSetEvent(10, 0, TimeProc, (DWORD_PTR)&data, TIME_PERIODIC);
+#else
+    std::thread timer(linux_timer, &data);
+#endif
 
     while (true) {
         int recv_len = recvfrom(voiceSocket, (char*)&incoming_pkt, sizeof(VoicePacketToServer), 0, (struct sockaddr*)&sender, &sender_len);
 
-        if (recv_len == SOCKET_ERROR) {
+        if (recv_len < 0) {
             std::cout << "recvfrom() failed with error code  " << WSAGetLastError() << std::endl;
             return;
         }
@@ -210,7 +227,7 @@ void voiceReceiver(SOCKET voiceSocket) {
             }
         }
 
-        ClientSocket curSocket = { sender.sin_addr.S_un.S_addr, sender.sin_port };
+        ClientSocket curSocket = { sender.sin_addr.s_addr, sender.sin_port };
         ClientData* curData = nullptr;
         int current = -1;
         for (int i = 0; i < clients.count; i++) {
