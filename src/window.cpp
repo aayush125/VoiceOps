@@ -769,8 +769,8 @@ void VoiceOpsWindow::add_new_message(std::string pUsername, Glib::RefPtr<Gdk::Pi
     messageLabel->set_name("chat-image-label");
     messageLabel->set_halign(Gtk::Align::START);
     messageLabel->set_valign(Gtk::Align::FILL);
-    int width = (pImage->get_width() < 500) ? pImage->get_width() : 500;
-    int height = (pImage->get_height() < 500) ? pImage->get_height() : 500; 
+    int width = (pImage->get_width() < 200) ? pImage->get_width() : 200;
+    int height = (pImage->get_height() < 200) ? pImage->get_height() : 200; 
     messageLabel->set_size_request(width, height);
     messageLabel->set_can_shrink();
     messageLabel->set_expand(false);
