@@ -2,3 +2,4 @@ obj/
 bin/
 database/
 server_pw.ini
+build/
