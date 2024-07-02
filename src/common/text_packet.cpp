@@ -1,11 +1,10 @@
-#define NOGDI
-#include <winsock2.h>
 #include <iostream>
 
 #include "common/text_packet.h"
+#include "common/networking.h"
 
 // This works because we have FIXED size data transmissions
-ReceiveResult recv_pkt(uint64_t socket, Packet& pkt) {
+ReceiveResult recv_pkt(SOCKET socket, Packet& pkt) {
     size_t remaining_bytes = sizeof(Packet);
     char* data_position = reinterpret_cast<char*>(&pkt);
 

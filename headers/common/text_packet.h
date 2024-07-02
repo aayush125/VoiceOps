@@ -1,6 +1,8 @@
 #pragma once
 
+#include <common/networking.h>
 #include <cinttypes>
+
 #define MAX_PACKET_SIZE 1400
 
 #define min(a,b) (a < b ? a : b)
@@ -45,4 +47,4 @@ enum ReceiveResult: uint8_t {
     RECEIVE_RESULT_ERROR
 };
 
-ReceiveResult recv_pkt(uint64_t socket, Packet& pkt);
+ReceiveResult recv_pkt(SOCKET socket, Packet& pkt);

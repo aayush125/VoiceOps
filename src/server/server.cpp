@@ -1,8 +1,5 @@
-#include <WinSock2.h>
-#include <ws2tcpip.h>
 #include <iostream>
 #include <filesystem>
-#include <tchar.h>
 #include <string>
 #include <sstream>
 #include <thread>
@@ -14,6 +11,11 @@
 #include "database.h"
 #include <server/voice_server.h>
 #include <common/text_packet.h>
+#include <common/networking.h>
+
+#ifndef _WIN32
+#include <cstring>
+#endif
 
 std::vector<data> databaseQuery;
 // Map socket to usernames
@@ -48,15 +50,18 @@ bool handleNewConnection(SOCKET clientSocket, std::string& username) {
     return false;
 }
 
-void receivePicture(SOCKET sock, Packet initialPacket, const std::string& username, fd_set& master, SOCKET &serverSocket) {
+void receivePicture(SOCKET sock, Packet initialPacket, const std::string& username, fd_set& master, int max_socket, SOCKET &serverSocket) {
     Packet sendPacket;
     sendPacket.packetType = PACKET_TYPE_IMAGE_FROM_SERVER_FIRST_PACKET;
     sendPacket.length = username.length();
     memset(sendPacket.data.image_sender, 0, 50);
     memcpy(sendPacket.data.image_sender, username.c_str(), username.length());
 
-    for (int j = 0; j < master.fd_count; j++) {
-        SOCKET outSock = master.fd_array[j];
+    for (SOCKET outSock = 1; outSock <= max_socket; outSock++) {
+        if (!FD_ISSET(outSock, &master)) {
+            continue;
+        }
+
         if (outSock != serverSocket && outSock != sock) {
             send(outSock, reinterpret_cast<char*>(&sendPacket), sizeof(Packet), 0);
             send(outSock, reinterpret_cast<char*>(&initialPacket), sizeof(Packet), 0);
@@ -88,8 +93,11 @@ void receivePicture(SOCKET sock, Packet initialPacket, const std::string& userna
             break;
         }
 
-        for (int j = 0; j < master.fd_count; j++) {
-            SOCKET outSock = master.fd_array[j];
+        for (SOCKET outSock = 1; outSock <= max_socket; outSock++) {
+            if (!FD_ISSET(outSock, &master)) {
+                continue;
+            }
+
             if (outSock != serverSocket && outSock != sock) {
                 send(outSock, reinterpret_cast<char*>(&packet), sizeof(Packet), 0);
             }
@@ -103,8 +111,11 @@ void receivePicture(SOCKET sock, Packet initialPacket, const std::string& userna
 
     if (failed) {
         sendPacket.packetType = PACKET_TYPE_IMAGE_FAILURE;
-        for (int j = 0; j < master.fd_count; j++) {
-            SOCKET outSock = master.fd_array[j];
+        for (SOCKET outSock = 1; outSock <= max_socket; outSock++) {
+            if (!FD_ISSET(outSock, &master)) {
+                continue;
+            }
+
             if (outSock != serverSocket && outSock != sock) {
                 send(outSock, reinterpret_cast<char*>(&sendPacket), sizeof(Packet), 0);
             }
@@ -137,7 +148,7 @@ int main(int argc, char* argv[]) {
         std::cin >> port;
     }
 
-    SOCKET serverSocket, acceptSocket;
+    SOCKET serverSocket, clientSocket;
     int MAXCONN = 30;
     int queryMessagesLimit = 5;
     
@@ -148,6 +159,7 @@ int main(int argc, char* argv[]) {
     createDB(directoryDatabase);
     createTable(directoryDatabase);
 
+#ifdef _WIN32
     // Loading the dll file
     WSADATA wsaData;
     int wsaerr;
@@ -157,11 +169,12 @@ int main(int argc, char* argv[]) {
         std::cout << "The winsock dll not found!" << std::endl;
         return 0;
     }
+#endif
 
     // Setup server Socket
-    serverSocket = INVALID_SOCKET;
+    serverSocket = 0;
     serverSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (serverSocket == INVALID_SOCKET) {
+    if (INVALIDSOCKET(serverSocket)) {
         std::cout << "Error at Socket(): " << WSAGetLastError() << std::endl;
         WSACleanup();
         return 0;
@@ -171,9 +184,9 @@ int main(int argc, char* argv[]) {
     sockaddr_in service;
     service.sin_family = AF_INET;
 
-    InetPton(AF_INET, _T("0.0.0.0"), &service.sin_addr.s_addr);
+    inet_pton(AF_INET, "0.0.0.0", &service.sin_addr.s_addr);
     service.sin_port = htons(port);
-    if (bind(serverSocket, (SOCKADDR*)&service, sizeof(service)) == SOCKET_ERROR) {
+    if (bind(serverSocket, (sockaddr*)&service, sizeof(service))) {
         std::cout << "Bind() failed!" << WSAGetLastError() << std::endl;
         closesocket(serverSocket);
         WSACleanup();
@@ -182,23 +195,23 @@ int main(int argc, char* argv[]) {
 
     // Listen on the socket
 
-    if (listen(serverSocket, MAXCONN) == SOCKET_ERROR) {
+    if (listen(serverSocket, MAXCONN) < 0) {
         std::cout << "Listen(): Error listening on socket!" << WSAGetLastError() << std::endl;
     } else {
         std::cout << "Server Initialised, I am waiting Connections" << std::endl;
     }
 
     // Voice Chat socket
-    SOCKET voiceServerSocket = INVALID_SOCKET;
+    SOCKET voiceServerSocket = 0;
     voiceServerSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-    if (voiceServerSocket == INVALID_SOCKET) {
+    if (INVALIDSOCKET(voiceServerSocket)) {
         std::cout << "Error at Socket(): " << WSAGetLastError() << std::endl;
         WSACleanup();
         return 0;
     }
 
     // Bind the UDP voice socket on the same port and ip as TCP socket
-    if (bind(voiceServerSocket, (SOCKADDR*)&service, sizeof(service)) == SOCKET_ERROR) {
+    if (bind(voiceServerSocket, (sockaddr*)&service, sizeof(service))) {
         std::cout << "Bind() failed!" << WSAGetLastError() << std::endl;
         closesocket(serverSocket);
         WSACleanup();
@@ -206,24 +219,32 @@ int main(int argc, char* argv[]) {
     }
 
     // Spin off the voice server to a separate thread
-    auto voiceProducerThread = std::thread(voiceReceiver, voiceServerSocket);
+    // auto voiceProducerThread = std::thread(voiceReceiver, voiceServerSocket);
 
     fd_set master;
     FD_ZERO(&master);
 
     FD_SET(serverSocket, &master);
+    SOCKET max_socket = serverSocket;
     while (true) {
 
         fd_set copy = master;
-        int socketCount = select(0, &copy, nullptr, nullptr, nullptr);
+        if (select(max_socket + 1, &copy, nullptr, nullptr, nullptr) < 0) {
+            std::cout << "select() failed: " << WSAGetLastError() << std::endl;
+            WSACleanup();
+            return -1;
+        }
 
-        for (int i = 0; i < socketCount; i++) {
-            SOCKET sock = copy.fd_array[i];
+        for (SOCKET sock = 1; sock <= max_socket; sock++) {
+            if (!FD_ISSET(sock, &copy)) {
+                continue;
+            }
+
             if (sock == serverSocket) {
 
                 // Accept a new Connection
-                acceptSocket = accept(serverSocket, nullptr, nullptr);
-                if (acceptSocket == INVALID_SOCKET) {
+                clientSocket = accept(serverSocket, nullptr, nullptr);
+                if (INVALIDSOCKET(clientSocket)) {
                     std::cout << "Accept Failed: " << WSAGetLastError() << std::endl;
                     WSACleanup();
                     return -1;
@@ -233,16 +254,19 @@ int main(int argc, char* argv[]) {
 
                 std::string username;
                 // Add the new connection to the list of connected Clients
-                if (handleNewConnection(acceptSocket, username)) {
-                    FD_SET(acceptSocket, &master);
+                if (handleNewConnection(clientSocket, username)) {
+                    FD_SET(clientSocket, &master);
+                    if (clientSocket > max_socket) {
+                        max_socket = clientSocket;
+                    }
                     
                     Packet pkt;
                     pkt.packetType = PACKET_TYPE_AUTH_RESPONSE;
                     pkt.data.auth_response = true;
-                    send(acceptSocket, reinterpret_cast<char*>(&pkt), sizeof(Packet), 0);
+                    send(clientSocket, reinterpret_cast<char*>(&pkt), sizeof(Packet), 0);
                     
                     std::cout << "The username outside handleconnection is " << username << std::endl;
-                    clientUsernames[acceptSocket] = username; // Store the username
+                    clientUsernames[clientSocket] = username; // Store the username
 
                     pkt.packetType = PACKET_TYPE_MSG_FROM_SERVER;
 
@@ -253,13 +277,14 @@ int main(int argc, char* argv[]) {
                         memset(pkt.data.message_from_server.username, 0, 50);
                         memcpy(pkt.data.message_from_server.username, row.sender.c_str(), row.sender.length());
 
-                        send(acceptSocket, reinterpret_cast<char*>(&pkt), sizeof(Packet), 0);
+                        send(clientSocket, reinterpret_cast<char*>(&pkt), sizeof(Packet), 0);
                     }
                 } else {
                     Packet pkt;
                     pkt.packetType = PACKET_TYPE_AUTH_RESPONSE;
                     pkt.data.auth_response = false;
-                    send(acceptSocket, reinterpret_cast<char*>(&pkt), sizeof(Packet), 0);
+                    send(clientSocket, reinterpret_cast<char*>(&pkt), sizeof(Packet), 0);
+                    closesocket(clientSocket);
                 }
 
             } else {
@@ -294,8 +319,11 @@ int main(int argc, char* argv[]) {
                     memset(broadcastingPacket.data.message_from_server.username, 0, 50);
                     memcpy(broadcastingPacket.data.message_from_server.username, username.c_str(), username.length());
 
-                    for (int j = 0; j < master.fd_count; j++) {
-                        SOCKET outSock = master.fd_array[j];
+                    for (SOCKET outSock = 1; outSock <= max_socket; outSock++) {
+                        if (!FD_ISSET(outSock, &master)) {
+                            continue;
+                        }
+
                         if (outSock != serverSocket && outSock != sock) {
                             send(outSock, reinterpret_cast<char*>(&broadcastingPacket), sizeof(Packet), 0);
                         }
@@ -304,7 +332,7 @@ int main(int argc, char* argv[]) {
                 } else if (packet.packetType == PACKET_TYPE_IMAGE) {
                     // Broadcast the picture packets to other clients
                     std::string& username = clientUsernames[sock];
-                    receivePicture(sock, packet, username, master, serverSocket);
+                    receivePicture(sock, packet, username, master, max_socket, serverSocket);
                 } else if (packet.packetType == PACKET_TYPE_VOICE_JOIN) {
                     // TODO
                     // add user to voice

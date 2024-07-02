@@ -1,4 +1,4 @@
 #pragma once
-#include <winsock2.h>
+#include <common/networking.h>
 
 void voiceReceiver(SOCKET voiceSocket);

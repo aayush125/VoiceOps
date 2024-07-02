@@ -3,3 +3,4 @@ bin/
 database/
 server_pw.ini
 build/
+linux_build/
