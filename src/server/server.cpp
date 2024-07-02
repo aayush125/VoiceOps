@@ -11,11 +11,11 @@
 #include <map>
 #include <fstream>
 #include <cstdint>
-// #include "database.h"
+#include "database.h"
 #include <server/voice_server.h>
 #include <common/text_packet.h>
 
-// std::vector<data> databaseQuery;
+std::vector<data> databaseQuery;
 // Map socket to usernames
 std::map<SOCKET, std::string> clientUsernames;
 
@@ -140,14 +140,13 @@ int main(int argc, char* argv[]) {
     SOCKET serverSocket, acceptSocket;
     int MAXCONN = 30;
     int queryMessagesLimit = 5;
-    // Loading the database file
     
-    // std::string directoryDatabaseString = "database/server.db";
-    // const char* directoryDatabase = directoryDatabaseString.c_str();
+    // Loading the database file
+    std::string directoryDatabaseString = "database/server.db";
+    const char* directoryDatabase = directoryDatabaseString.c_str();
 
-    // createDB(directoryDatabase);
-    // createTable(directoryDatabase);
-    // databaseQuery = selectData(directoryDatabase, queryMessagesLimit);
+    createDB(directoryDatabase);
+    createTable(directoryDatabase);
 
     // Loading the dll file
     WSADATA wsaData;
@@ -245,17 +244,17 @@ int main(int argc, char* argv[]) {
                     std::cout << "The username outside handleconnection is " << username << std::endl;
                     clientUsernames[acceptSocket] = username; // Store the username
 
-                    /*
                     pkt.packetType = PACKET_TYPE_MSG_FROM_SERVER;
-                    for (const auto& row : databaseQuery) {
-                        messagePacket.length = static_cast<uint32_t>(row.message.length());
-                        memcpy(messagePacket.data.message_from_server.text, row.message.c_str(), row.message.length());
-                        memset(messagePacket.data.message_from_server.username, 0, 50);
-                        memcpy(messagePacket.data.message_from_server.username, row.sender.c_str(), row.sender.length());
 
-                        send(acceptSocket, reinterpret_cast<char*>(&messagePacket), sizeof(Packet), 0);
+                    databaseQuery = selectData(directoryDatabase, queryMessagesLimit);
+                    for (const auto& row : databaseQuery) {
+                        pkt.length = static_cast<uint32_t>(row.message.length());
+                        memcpy(pkt.data.message_from_server.text, row.message.c_str(), row.message.length());
+                        memset(pkt.data.message_from_server.username, 0, 50);
+                        memcpy(pkt.data.message_from_server.username, row.sender.c_str(), row.sender.length());
+
+                        send(acceptSocket, reinterpret_cast<char*>(&pkt), sizeof(Packet), 0);
                     }
-                    */
                 } else {
                     Packet pkt;
                     pkt.packetType = PACKET_TYPE_AUTH_RESPONSE;
@@ -266,13 +265,11 @@ int main(int argc, char* argv[]) {
             } else {
                 // Accept a new message
                 Packet packet;
-                // int byteCount = 0;
-                // byteCount = recv(sock, reinterpret_cast<char*>(&packet), sizeof(Packet), 0);
 
                 ReceiveResult res = recv_pkt(sock, packet);
 
                 if (res != RECEIVE_RESULT_SUCCESS) {
-                    if (res = RECEIVE_RESULT_CONN_CLOSED) {
+                    if (res == RECEIVE_RESULT_CONN_CLOSED) {
                         std::cout << "Client #" << sock << " disconnected." << std::endl;
                     } else {
                         std::cout << "Error with Client #" << sock << ": " << WSAGetLastError() << std::endl;
@@ -288,7 +285,7 @@ int main(int argc, char* argv[]) {
                     std::string str(packet.data.message_to_server, packet.data.message_to_server + packet.length);
                     std::cout << username << ": " << str << std::endl;
                     const int channelID = 1;
-                    // insertData(directoryDatabase, username, str, channelID);
+                    insertData(directoryDatabase, username, str, channelID);
 
                     Packet broadcastingPacket;
                     broadcastingPacket.packetType = PACKET_TYPE_MSG_FROM_SERVER;
@@ -309,6 +306,7 @@ int main(int argc, char* argv[]) {
                     std::string& username = clientUsernames[sock];
                     receivePicture(sock, packet, username, master, serverSocket);
                 } else if (packet.packetType == PACKET_TYPE_VOICE_JOIN) {
+                    // TODO
                     // add user to voice
                 }
             }

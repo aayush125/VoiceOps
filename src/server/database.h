@@ -90,5 +90,6 @@ static std::vector<data> selectData(const char* databasePath, int queryLimit) {
     std::vector<data> databaseContent;
     std::string sql = "SELECT * FROM MESSAGES ORDER BY ID DESC LIMIT " + std::to_string(queryLimit);
     sqlite3_exec(DB, sql.c_str(), callback, &databaseContent, NULL);
+    sqlite3_close(DB);
     return databaseContent;
 }
