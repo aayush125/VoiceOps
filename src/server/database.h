@@ -69,18 +69,35 @@ static int createTable(const char* databasePath) {
 
 static int insertData(const char* databasePath, std::string clientID, std::string message, int channelID) {
     sqlite3* DB;
-    char* messageError;
+    sqlite3_stmt* statement;
     int exit = sqlite3_open(databasePath, &DB);
 
-    std::string sql = "INSERT INTO MESSAGES (SENDER, MESSAGE, CHANNELID) VALUES('" + clientID + "','" + message + "'," + std::to_string(channelID) + ");";
-    std::cout << sql.c_str() << std::endl;
-
-    exit = sqlite3_exec(DB, sql.c_str(), NULL, 0, &messageError);
-
     if (exit != SQLITE_OK) {
-        std::cerr << "Error Inserting data" << messageError << std::endl;
-        sqlite3_free(messageError);
+        std::cerr << "Cannot open database: " << sqlite3_errmsg(DB) << std::endl;
+        return exit;
     }
+
+    std::string sql = "INSERT INTO MESSAGES (SENDER, MESSAGE, CHANNELID) VALUES (?, ?, ?);";
+    exit = sqlite3_prepare_v2(DB, sql.c_str(), -1, &statement, NULL);
+    if (exit != SQLITE_OK) {
+        std::cerr << "Error preparing statement: " << sqlite3_errmsg(DB) << std::endl;
+        sqlite3_close(DB);
+        return exit;
+    }
+    
+    sqlite3_bind_text(statement, 1, clientID.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_text(statement, 2, message.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_int(statement, 3, channelID);
+
+    exit = sqlite3_step(statement);
+    if (exit != SQLITE_DONE) {
+        std::cerr << "Error inserting data: " << sqlite3_errmsg(DB) << std::endl;
+        return exit;
+    }
+
+    sqlite3_finalize(statement);
+    sqlite3_close(DB);
+
     return 0;
 }
 
